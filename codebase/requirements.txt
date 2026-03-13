@@ -1,0 +1,20 @@
+# Layer 1 Dependencies: Data Cleaning & SHAP Feature Importance
+# BTP Project - Causal Auditing for Clinical Decision Support
+
+# Data Processing
+pandas>=1.3.0
+numpy>=1.21.0
+
+# Machine Learning
+scikit-learn>=1.0.0
+xgboost>=1.5.0
+
+# Explainability (SHAP)
+shap>=0.41.0
+
+# Visualization
+matplotlib>=3.4.0
+seaborn>=0.11.0
+
+# Utilities
+tqdm>=4.62.0
