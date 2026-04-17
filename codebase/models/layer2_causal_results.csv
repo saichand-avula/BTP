@@ -1,0 +1,8 @@
+Feature,CATE,CI_Lower,CI_Upper,P_Value,E_Value,Status
+number_inpatient,0.0741,0.0698,0.0785,0.0,1.35,FRAGILE
+num_lab_procedures,0.004,0.0003,0.0077,0.0348,1.02,FRAGILE
+num_medications,0.0106,0.0069,0.0142,0.0,1.09,FRAGILE
+discharge_disposition_22,0.1811,0.1738,0.1884,0.0,1.67,FRAGILE
+time_in_hospital,0.0118,0.008,0.0157,0.0,1.1,FRAGILE
+number_emergency,0.0209,0.0145,0.0272,0.0,1.14,FRAGILE
+number_diagnoses,0.0091,0.0053,0.0128,0.0,1.08,FRAGILE

@@ -202,7 +202,7 @@ Repeat for all 23 medications.
 
 ---
 
-## 2. THE 4-LAYER ARCHITECTURE: DATA FLOW
+## 2. THE 3-LAYER ARCHITECTURE: DATA FLOW
 
 ### Overview Diagram
 
@@ -210,23 +210,17 @@ Repeat for all 23 medications.
 INPUT: Patient Record (60 features) from Diabetes Dataset
    ↓
 ┌──────────────────────────────────────────────────────────────┐
-│ LAYER 1: BLACK-BOX PREDICTION                                │
-│ Method: XGBoost Classifier                                   │
-│ Output: P(Readmit_30d | Features) ∈ [0,1]                    │
+│ LAYER 1: BLACK-BOX PREDICTION & ASSOCIATIVE EXPLANATION      │
+│ Method: XGBoost Classifier    %  SHAP (TreeExplainer)        │
+│ Output: P(Readmit_30d | Features) ∈ [0,1] & Feature Contributions (SHAP values)                  │      
 └──────────────────────────────────────────────────────────────┘
    ↓
    [Prediction Score: 0.78 → "High Risk"]
    ↓
-┌──────────────────────────────────────────────────────────────┐
-│ LAYER 2: ASSOCIATIVE EXPLANATION                             │
-│ Method: SHAP (TreeExplainer)                                 │
-│ Output: Feature Contributions (SHAP values)                  │
-└──────────────────────────────────────────────────────────────┘
-   ↓
    [Top Features: insulin=+0.12, num_labs=+0.08, time_hospital=+0.07 ...]
    ↓
 ┌──────────────────────────────────────────────────────────────┐
-│ LAYER 3: CAUSAL AUDIT (CORE NOVELTY)                         │
+│ LAYER 2: CAUSAL AUDIT (CORE NOVELTY)                         │
 │ Method: DoubleML (Doubly Robust Estimation) + E-values       │
 │ Output: Causal Status (ROBUST/FRAGILE/PROTECTED)             │
 └──────────────────────────────────────────────────────────────┘
@@ -234,7 +228,7 @@ INPUT: Patient Record (60 features) from Diabetes Dataset
    [Audit Result: insulin=FRAGILE (E=1.8), discharge=ROBUST (E=3.4)]
    ↓
 ┌──────────────────────────────────────────────────────────────┐
-│ LAYER 4: SAFE CLINICAL RECOMMENDATIONS                       │
+│ LAYER 3: SAFE CLINICAL RECOMMENDATIONS                       │
 │ Method: DiCE (Counterfactual Generation) with Filtering      │
 │ Output: Actionable Interventions (using only ROBUST features)│
 └──────────────────────────────────────────────────────────────┘

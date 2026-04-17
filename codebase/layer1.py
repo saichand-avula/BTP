@@ -38,7 +38,7 @@ def train():
         data_preprocessing.run()
 
     print("\n" + "=" * 55)
-    print("TRAINING  –  Layer 1 Model")
+    print("LAYER 1: BLACK-BOX PREDICTION & ASSOCIATIVE EXPLANATION")
     print("=" * 55)
 
     df = pd.read_csv(CLEANED_DATA)

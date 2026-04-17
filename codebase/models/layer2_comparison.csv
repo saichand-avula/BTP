@@ -1,0 +1,5 @@
+Feature,Naive_Effect,Causal_CATE,Gap,E_Value,Status,Verdict
+number_inpatient,0.0353,0.0741,0.0388,1.35,FRAGILE,HEAVILY CONFOUNDED
+number_diagnoses,0.0105,0.0091,0.0014,1.08,FRAGILE,CLEAN (minimal confounding)
+time_in_hospital,0.0062,0.0118,0.0056,1.1,FRAGILE,MILDLY CONFOUNDED
+num_medications,0.003,0.0106,0.0076,1.09,FRAGILE,MILDLY CONFOUNDED
