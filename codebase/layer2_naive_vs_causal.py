@@ -24,6 +24,7 @@ import pandas as pd
 from pathlib import Path
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
+import shap
 
 warnings.filterwarnings("ignore")
 
@@ -43,8 +44,16 @@ def load_top_shap_features():
             all_features = pickle.load(f)
         with open(MODELS_DIR / "layer1_model.pkl", "rb") as f:
             model = pickle.load(f)
-        with open(MODELS_DIR / "layer1_explainer.pkl", "rb") as f:
-            explainer = pickle.load(f)
+
+        explainer = None
+        try:
+            with open(MODELS_DIR / "layer1_explainer.pkl", "rb") as f:
+                explainer = pickle.load(f)
+        except Exception:
+            explainer = None
+
+        if explainer is None:
+            explainer = shap.TreeExplainer(model)
 
         df = pd.read_csv(CLEANED_DATA)
         X_sample = df[all_features].head(2000).values

@@ -83,9 +83,35 @@ def train():
 
 # ── Load ──────────────────────────────────────────────────────────────────────
 def load():
-    with open(MODEL_PKL,     'rb') as f: model         = pickle.load(f)
-    with open(EXPLAINER_PKL, 'rb') as f: explainer     = pickle.load(f)
-    with open(FEATURES_PKL,  'rb') as f: feature_names = pickle.load(f)
+    """Load model artifacts; rebuild SHAP explainer if the pickle is incompatible.
+
+    The SHAP explainer object can be sensitive to Python/numba/shap version
+    mismatches, so we treat it as a cache rather than a guaranteed stable
+    artifact.
+    """
+
+    with open(MODEL_PKL, 'rb') as f:
+        model = pickle.load(f)
+
+    with open(FEATURES_PKL, 'rb') as f:
+        feature_names = pickle.load(f)
+
+    explainer = None
+    if EXPLAINER_PKL.exists():
+        try:
+            with open(EXPLAINER_PKL, 'rb') as f:
+                explainer = pickle.load(f)
+        except Exception:
+            explainer = None
+
+    if explainer is None:
+        explainer = shap.TreeExplainer(model)
+        try:
+            with open(EXPLAINER_PKL, 'wb') as f:
+                pickle.dump(explainer, f)
+        except Exception:
+            pass
+
     return model, explainer, feature_names
 
 
@@ -364,5 +390,10 @@ def main():
 if __name__ == "__main__":
     if "--retrain" in sys.argv:
         train()
+    elif "--train-only" in sys.argv:
+        if MODEL_PKL.exists() and FEATURES_PKL.exists():
+            load()
+        else:
+            train()
     else:
         main()
