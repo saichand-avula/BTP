@@ -69,6 +69,10 @@ def run():
     print(f"\nTarget  →  Readmitted <30d: {pos:,} ({pos/len(df)*100:.1f}%)  |  Not: {len(df)-pos:,}")
 
     # ── Drop useless columns ─────────────────────────────────────
+    # Keep a non-model patient key solely for grouped evaluation.  It is removed
+    # before modelling, but prevents encounters from the same patient appearing
+    # in both development and evaluation sets.
+    df['patient_id'] = df['patient_nbr'].astype(str)
     drop_cols = ['encounter_id', 'patient_nbr', 'readmitted', 'weight',
                  'payer_code', 'medical_specialty']
     df.drop(columns=[c for c in drop_cols if c in df.columns], inplace=True)
@@ -99,7 +103,7 @@ def run():
 
     # ── One-hot encode remaining categoricals ────────────────────
     cat_cols = [c for c in df.select_dtypes(include='object').columns
-                if c != 'Readmitted_30d']
+                if c not in {'Readmitted_30d', 'patient_id'}]
     df = pd.get_dummies(df, columns=cat_cols, drop_first=True, dtype=int)
 
     # ── Move target to last column ───────────────────────────────

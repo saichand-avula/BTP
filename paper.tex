@@ -1,6 +1,6 @@
 % ============================================================================
-% CausalShield — IEEE Format Research Paper (v2)
-% Overleaf-Ready: All figures use TikZ/pgfplots (no external images needed)
+% CausalShield — IEEE Format Research Paper
+% Accurately reflects the implemented codebase
 % Compile with: pdfLaTeX
 % ============================================================================
 \documentclass[conference]{IEEEtran}
@@ -21,6 +21,8 @@
 \usepackage{array}
 \usepackage{colortbl}
 \usepackage{enumitem}
+\usepackage{pifont}
+\usepackage{threeparttable}
 
 % ── TikZ & pgfplots for figures ─────────────────────────────────────────────
 \usepackage{tikz}
@@ -31,8 +33,7 @@
 % ── Colors ───────────────────────────────────────────────────────────────────
 \definecolor{layer1}{HTML}{4A90D9}
 \definecolor{layer2}{HTML}{E74C3C}
-\definecolor{layer3}{HTML}{F39C12}
-\definecolor{layer4}{HTML}{27AE60}
+\definecolor{layer3}{HTML}{27AE60}
 \definecolor{fragile}{HTML}{E74C3C}
 \definecolor{robust}{HTML}{27AE60}
 \definecolor{uncertain}{HTML}{F39C12}
@@ -58,7 +59,7 @@
 % ══════════════════════════════════════════════════════════════════════════════
 % TITLE & AUTHORS
 % ══════════════════════════════════════════════════════════════════════════════
-\title{CausalShield: A Doubly Robust Causal Auditing\\Framework for Safe Explainability in Clinical\\Decision Support Systems}
+\title{CausalShield: Toward Causal Auditing of\\Explainability in Clinical Decision\\Support Systems}
 
 \author{
 \begin{minipage}[t]{0.3\textwidth}
@@ -95,11 +96,11 @@ sainitin.d23@iiits.in
 % ABSTRACT
 % ══════════════════════════════════════════════════════════════════════════════
 \begin{abstract}
-Clinical AI models for hospital readmission prediction increasingly rely on post-hoc explanation methods such as SHAP and LIME. However, these methods expose only \textit{correlational} feature importance, creating a critical patient safety problem: a model may flag insulin as a top risk factor not because insulin causes readmission, but because sicker patients receive it --- a classic case of \textit{confounding by indication}. We propose \textbf{CausalShield}, a four-layer framework that transforms correlational explanations into causally-validated, clinically safe recommendations. Operating on the UCI Diabetes 130-US Hospitals dataset (101,766 encounters), the pipeline integrates: (1)~Gradient Boosted Trees for prediction, (2)~SHAP for associative explanation, (3)~Doubly Robust Estimation (DoubleML/AIPW) with E-value sensitivity analysis for causal auditing, and (4)~counterfactual recourse constrained to causally-validated features. Results show that 7 of 10 top SHAP features are causally fragile ($E < 2.0$), while discharge disposition ($E = 4.10$) and HbA1c ($E = 3.21$) are robust. The framework blocks dangerous recommendations like ``reduce insulin'' and generates safe, actionable clinical guidance. To our knowledge, this is the first system integrating SHAP, doubly robust causal estimation, E-value analysis, and causally-constrained counterfactuals into a unified clinical AI auditing pipeline.
+Clinical AI explanations can be mistaken for treatment recommendations. We present \textbf{CausalShield}, a reproducible four-component audit pipeline for 99,343 eligible UCI Diabetes 130-US Hospitals encounters. Component~1 selects the best readmission model from five candidates via 5-fold patient-grouped cross-validation and computes held-out TreeSHAP explanations. Component~2 conducts an exploratory, cross-fitted AIPW audit of five timing-eligible non-demographic features, with common-support trimming and E-values from risk-ratio confidence bounds. Component~3 reports held-out subgroup performance and disparate-impact ratios. Component~4 withholds patient-level recourse when actionability or sensitivity criteria are not met. The selected model (XGBoost) achieved held-out ROC-AUC 0.664 (patient-cluster bootstrap 95\% CI 0.649--0.678) and PR-AUC 0.222. At the top-20\% operating point (threshold 0.146), sensitivity is 0.383, specificity 0.823, and PPV 0.213. SHAP direction agreed with the AIPW direction for all five primary features, while four associations were FRAGILE and one was UNCERTAIN by E-value sensitivity. No audited feature met both the actionability and robustness requirements for recourse. These results are observational sensitivity analyses, not treatment-effect estimates or clinical recommendations.
 \end{abstract}
 
 \begin{IEEEkeywords}
-Explainable AI, Causal Inference, SHAP, Double Machine Learning, CATE, Counterfactual Explanations, Clinical Decision Support, Hospital Readmission, Confounding by Indication, E-values
+Explainable AI, Causal Inference, AIPW, Clinical Decision Support, Hospital Readmission, Confounding, Subgroup Analysis
 \end{IEEEkeywords}
 
 % ══════════════════════════════════════════════════════════════════════════════
@@ -109,11 +110,11 @@ Explainable AI, Causal Inference, SHAP, Double Machine Learning, CATE, Counterfa
 
 Artificial Intelligence is reshaping clinical medicine. The 30-day hospital readmission metric alone costs the US healthcare system \$26 billion annually~\cite{cms2023readmission}, making accurate AI-driven risk prediction of significant clinical and economic value. However, deploying AI in clinical settings demands more than accuracy --- physicians need to understand \textit{why} a model flags a patient as high-risk.
 
-This has driven the adoption of eXplainable AI (XAI) methods such as SHAP~\cite{lundberg2020local} and LIME~\cite{ribeiro2016lime}. Yet these tools reveal only statistical \textit{associations}, not causal drivers. In clinical medicine, this distinction is a patient safety issue.
+This has driven the adoption of eXplainable AI (XAI) methods such as SHAP~\cite{lundberg2020local} and LIME~\cite{ribeiro2016lime}. Yet these tools reveal only statistical \textit{associations}, not causal drivers; causal interpretation requires assumptions about interventions, confounding, and temporal ordering~\cite{pearl2009causality}. In clinical medicine, this distinction is a patient safety issue.
 
-\subsection{Motivating Example: The Insulin Paradox}
+\subsection{Motivating Example: Why Model Direction Is Not Treatment Direction}
 
-Consider a readmission model where SHAP assigns insulin a high positive importance score ($+0.12$), suggesting insulin \textit{increases} risk. A na\"ive interpretation could lead to dangerous insulin reduction. The reality is illustrated in Fig.~\ref{fig:dag}: doctors prescribe insulin to the \textit{sickest} patients, who are also readmitted more. The model has learned a spurious correlation through \textit{confounding by indication}~\cite{feuerriegel2024causal}.
+Consider a hypothetical readmission model in which insulin has a positive model contribution. A na\"ive interpretation could lead to dangerous insulin reduction. Fig.~\ref{fig:dag} shows why this inference is invalid: doctors may prescribe insulin to the \textit{sickest} patients, who are also readmitted more. This is an illustrative confounding-by-indication mechanism~\cite{feuerriegel2024causal}, not a claimed sign reversal in our data.
 
 % ── FIGURE 1: Causal DAG ────────────────────────────────────────────────────
 \begin{figure}[htbp]
@@ -136,28 +137,26 @@ Consider a readmission model where SHAP assigns insulin a high positive importan
     \draw[arr, blue!70!black] (sev) -- node[left, font=\scriptsize, text=blue!70!black] {causes} (ins);
     \draw[arr, blue!70!black] (sev) -- node[right, font=\scriptsize, text=blue!70!black] {causes} (read);
 
-    % Spurious arrow (what SHAP sees)
-    \draw[sarr] (ins) -- node[below, font=\scriptsize, text=red] {\textit{SHAP sees this}} (read);
+    % Spurious arrow (what feature importance sees)
+    \draw[sarr] (ins) -- node[below, font=\scriptsize, text=red] {\textit{Model sees this}} (read);
 
     % Labels
     \node[above=0.15cm of sev, font=\scriptsize\itshape, text=gray] {Unmeasured / Partially Measured};
-    \node[below=0.4cm of ins, font=\scriptsize, text=red, align=center] {$\times$ ``Stop insulin''\\is \textbf{DEADLY}};
+    \node[below=0.4cm of ins, font=\scriptsize, text=red, align=center] {$\times$ ``Stop insulin''\\is \textbf{dangerous}};
 \end{tikzpicture}
-\caption{Causal DAG illustrating confounding by indication. Disease severity causes \textit{both} insulin prescription and readmission. SHAP incorrectly attributes the readmission association to insulin itself (red dashed arrow).}
+\caption{Causal DAG illustrating confounding by indication. Disease severity causes \textit{both} insulin prescription and readmission. A feature importance method may incorrectly attribute the readmission association to insulin itself (red dashed arrow).}
 \label{fig:dag}
 \end{figure}
 
 \subsection{Research Gap}
-Despite extensive literature on XAI, causal inference, and counterfactual explanations \textit{separately}, no published framework integrates all four components --- prediction, explanation, causal audit with robustness quantification, and causally-constrained recourse --- into a unified pipeline.
+Despite extensive literature on XAI, causal inference, and counterfactual explanations \textit{separately}, relatively few works integrate predictive modelling with exploratory causal analysis in a single reproducible pipeline applied to clinical data.
 
 \subsection{Contributions}
 \begin{enumerate}[leftmargin=*, nosep]
-    \item \textbf{End-to-end Causal Audit Framework:} First pipeline integrating SHAP, DoubleML/AIPW, E-values, and safe counterfactual recourse.
-    \item \textbf{Empirical confounding detection:} 70\% of top SHAP features proven causally fragile on 101K real clinical records.
-    \item \textbf{Causally-safe recourse:} Dangerous recommendations (e.g., ``reduce insulin'') are automatically blocked.
-    \item \textbf{E-value as recourse filter:} Novel use of sensitivity analysis for feature selection in counterfactual generation.
-    \item \textbf{Fairness integration:} Disparate impact analysis across age, race, and gender.
-    \item \textbf{Open-source clinical dashboard:} Interactive Streamlit UI for real-time patient assessment.
+    \item \textbf{Reproducible prediction pipeline:} A grouped train/validation/test split with model selection across Logistic Regression, Random Forest, and Gradient Boosting, with held-out TreeSHAP explanations.
+    \item \textbf{SHAP-guided observational audit:} Cross-fitted AIPW estimation for five temporally eligible SHAP-ranked non-demographic features (ICD diagnosis groups are excluded as they are coded at discharge), with common-support trimming, risk ratios, and E-value sensitivity categories (ROBUST / UNCERTAIN / FRAGILE).
+    \item \textbf{Subgroup performance \& fairness audit:} Held-out model performance stratified by age, race, and gender, plus disparate impact ratios with 80\% rule flagging.
+    \item \textbf{Constrained recourse audit:} An actionability-first safety gate that withholds recommendations unless a feature is both policy-approved and robust to unmeasured confounding; the current policy is author-defined, as no clinician-validated catalogue was available for this dataset.
 \end{enumerate}
 
 % ══════════════════════════════════════════════════════════════════════════════
@@ -165,25 +164,23 @@ Despite extensive literature on XAI, causal inference, and counterfactual explan
 % ══════════════════════════════════════════════════════════════════════════════
 \section{Related Work}
 
-Table~\ref{tab:related} summarizes the key related works and their relationship to CausalShield.
+Table~\ref{tab:related} summarizes the key related works and their relationship to this project.
 
 \begin{table*}[htbp]
-\caption{Summary of Related Work and Their Role in CausalShield}
+\caption{Summary of Related Work}
 \centering
 \footnotesize
 \renewcommand{\arraystretch}{1.2}
 \begin{tabular}{p{3.5cm}p{2.2cm}p{4.5cm}p{3.5cm}p{2cm}}
 \toprule
-\textbf{Paper} & \textbf{Venue} & \textbf{Key Contribution} & \textbf{Limitation} & \textbf{Our Layer} \\
+\textbf{Paper} & \textbf{Venue} & \textbf{Key Contribution} & \textbf{Limitation} & \textbf{Relevance} \\
 \midrule
-Lundberg et al. (2020)~\cite{lundberg2020local} & Nature MI & TreeExplainer: exact Shapley values for trees & Correlation only, not causation & Layer 1--2 \\
-Wachter et al. (2017)~\cite{wachter2017counterfactual} & Harvard JLT & Counterfactual explanations for GDPR compliance & No causal/correlational distinction & Layer 4 \\
-Feuerriegel et al. (2024)~\cite{feuerriegel2024causal} & Nature Medicine & CATE estimation for clinical treatment effects & Framework only, no XAI integration & Layer 3 \\
+Lundberg et al. (2020)~\cite{lundberg2020local} & Nature MI & TreeExplainer: exact Shapley values for trees & Correlation only, not causation & Motivation \\
+Wachter et al. (2017)~\cite{wachter2017counterfactual} & Harvard JLT & Counterfactual explanations for GDPR compliance & No causal/correlational distinction & Future work \\
+Feuerriegel et al. (2024)~\cite{feuerriegel2024causal} & Nature Medicine & CATE estimation for clinical treatment effects & Framework only, no XAI integration & Theoretical \\
 Carloni et al. (2025)~\cite{carloni2025causality} & WIREs DMKD & Systematic review: causality $\times$ XAI & Survey, no implementation & Theoretical \\
-Fernandez-Loria et al. (2022)~\cite{fernandez2022explaining} & MIS Quarterly & Decision-focused (not prediction-focused) CFEs & No causal validation of features & Layer 4 \\
-Bienefeld et al. (2023)~\cite{bienefeld2023solving} & npj Digital Med & Clinical trust requires plausible explanations & Single hospital, no causal audit & Dashboard \\
-\midrule
-\textbf{CausalShield (Ours)} & --- & \textbf{End-to-end: SHAP + DoubleML + E-values + Safe CFEs} & \textbf{See Sec. VII} & \textbf{All layers} \\
+Fernandez-Loria et al. (2022)~\cite{fernandez2022explaining} & MIS Quarterly & Decision-focused (not prediction-focused) CFEs & No causal validation of features & Future work \\
+Bienefeld et al. (2023)~\cite{bienefeld2023solving} & npj Digital Med & Clinical trust requires plausible explanations & Single hospital, no causal audit & Motivation \\
 \bottomrule
 \end{tabular}
 \label{tab:related}
@@ -191,70 +188,60 @@ Bienefeld et al. (2023)~\cite{bienefeld2023solving} & npj Digital Med & Clinical
 
 \textbf{SHAP and TreeExplainer.} Lundberg et al.~\cite{lundberg2020local} introduced polynomial-time exact Shapley value computation for tree models. While enabling real-time clinical deployment, SHAP values reflect \textit{model reliance}, not \textit{causal effect}. High SHAP values may arise entirely from confounding.
 
-\textbf{Counterfactual Explanations.} Wachter et al.~\cite{wachter2017counterfactual} proposed counterfactuals as GDPR-compliant explanations: ``\textit{If X had been Y, the decision would have been Z}.'' Their $L_1$-norm minimization finds sparse changes but does not distinguish causal from correlational changes --- a gap we address.
+\textbf{Counterfactual Explanations.} Wachter et al.~\cite{wachter2017counterfactual} proposed counterfactuals as GDPR-compliant explanations: ``\textit{If X had been Y, the decision would have been Z}.'' Their $L_1$-norm minimization finds sparse changes but does not distinguish causal from correlational changes.
 
-\textbf{Causal ML in Medicine.} Feuerriegel et al.~\cite{feuerriegel2024causal} formalized confounding by indication and advocated CATE estimation under unconfoundedness and positivity assumptions. Their framework provides the theoretical foundation for our Layer~3.
+\textbf{Causal ML in Medicine.} Feuerriegel et al.~\cite{feuerriegel2024causal} formalized confounding by indication and advocated CATE estimation under unconfoundedness and positivity assumptions. Their framework provides the theoretical foundation for our exploratory causal analysis.
 
-\textbf{Causality $\times$ XAI.} Carloni et al.~\cite{carloni2025causality} reviewed 51 papers identifying three perspectives: Critics (XAI lacks causal grounding), XAI-for-Causality (hypothesis generation), and Causality-for-XAI (the most promising direction). Our work operationalizes the third perspective.
-
-\textbf{Decision-Focused CFEs.} Fernandez-Loria et al.~\cite{fernandez2022explaining} showed that SHAP/LIME fail to identify \textit{decision-flipping} features. Valid explanations must pass their ``change test'' --- modifying the feature must flip the decision. This informs our counterfactual layer.
+\textbf{Causality $\times$ XAI.} Carloni et al.~\cite{carloni2025causality} reviewed 51 papers identifying three perspectives: Critics (XAI lacks causal grounding), XAI-for-Causality (hypothesis generation), and Causality-for-XAI (the most promising direction). Our work takes an initial step toward operationalizing the third perspective.
 
 % ══════════════════════════════════════════════════════════════════════════════
 % III. PROPOSED METHODOLOGY
 % ══════════════════════════════════════════════════════════════════════════════
 \section{Proposed Methodology}
 
-The \textbf{Causal-Audit Decision Support System (CA-DSS)} is a four-layer sequential pipeline. Fig.~\ref{fig:arch} illustrates the complete architecture.
+The pipeline consists of four components: (1) prediction with TreeSHAP explanations, (2) SHAP-guided causal audit via AIPW with E-values, (3) subgroup performance and fairness auditing, and (4) constrained recourse audit. Fig.~\ref{fig:arch} illustrates the architecture.
 
 % ── FIGURE 2: Architecture ──────────────────────────────────────────────────
-\begin{figure*}[htbp]
+\begin{figure}[htbp]
 \centering
 \begin{tikzpicture}[
-    node distance=0.4cm,
+    node distance=0.5cm,
     every node/.style={font=\small},
-    input/.style={draw, rounded corners=8pt, fill=gray!10, minimum width=3.8cm, minimum height=0.9cm, align=center, font=\small\bfseries},
-    layer/.style={draw, rounded corners=6pt, minimum width=3.8cm, minimum height=1.6cm, align=center, font=\small},
+    input/.style={draw, rounded corners=8pt, fill=gray!10, minimum width=6.5cm, minimum height=0.9cm, align=center, font=\small\bfseries},
+    layer/.style={draw, rounded corners=6pt, minimum width=6.5cm, minimum height=1.4cm, align=center, font=\small},
     output/.style={draw=none, minimum width=3.8cm, minimum height=0.6cm, align=center, font=\scriptsize\itshape, text=gray!70!black},
     arr/.style={-{Stealth[length=3mm]}, thick, gray!60!black},
     label/.style={font=\scriptsize\bfseries, text=white, fill=#1, rounded corners=2pt, inner sep=2pt},
 ]
     % Input
-    \node[input] (inp) {Patient Record\\(60+ Clinical Features)};
+    \node[input] (inp) {UCI Diabetes 130-US Hospitals\\(99,343 encounters, cleaned)};
 
-    % Layer 1
+    % Component 1
     \node[layer, fill=layer1!12, draw=layer1, below=0.6cm of inp] (l1) {
-        \tikz\node[label=layer1]{LAYER 1};\\[2pt]
-        \textbf{Black-Box Prediction}\\
-        GBM Classifier + SHAP TreeExplainer
+        \tikz\node[label=layer1]{COMPONENT 1};\\[2pt]
+        \textbf{Prediction \& Explanation}\\
+        XGBoost + TreeSHAP
     };
-    \node[output, right=0.3cm of l1] (o1) {$\rightarrow$ Risk Score (0--100\%)\\$\rightarrow$ Top-$K$ Feature Importance};
 
-    % Layer 2
+    % Component 2
     \node[layer, fill=layer2!10, draw=layer2, below=0.6cm of l1] (l2) {
-        \tikz\node[label=layer2]{LAYER 2};\\[2pt]
-        \textbf{Causal Audit} $\bigstar$ \textit{Core Novelty}\\
-        DoubleML/AIPW + E-Value Analysis
+        \tikz\node[label=layer2]{COMPONENT 2};\\[2pt]
+        \textbf{SHAP-Guided Causal Audit}\\
+        AIPW + E-Values (5 primary features)
     };
-    \node[output, right=0.3cm of l2] (o2) {$\rightarrow$ CATE per feature\\$\rightarrow$ ROBUST / FRAGILE / PROTECTED};
 
-    % Layer 3
+    % Components 3 and 4
     \node[layer, fill=layer3!12, draw=layer3, below=0.6cm of l2] (l3) {
-        \tikz\node[label=layer3]{LAYER 3};\\[2pt]
-        \textbf{Fairness \& Confounding Audit}\\
-        Disparate Impact + Na\"ive vs. Causal Gap
+        \tikz\node[label=layer3]{COMPONENT 3};\\[2pt]
+        \textbf{Subgroup \& DI Audit}
     };
-    \node[output, right=0.3cm of l3] (o3) {$\rightarrow$ DI violations by demographics\\$\rightarrow$ Confounding gap per feature};
-
-    % Layer 4
-    \node[layer, fill=layer4!12, draw=layer4, below=0.6cm of l3] (l4) {
-        \tikz\node[label=layer4]{LAYER 4};\\[2pt]
-        \textbf{Safe Counterfactual Recourse}\\
-        Greedy Search on ROBUST Features Only
+    \node[layer, fill=lightyellow, draw=uncertain, below=0.6cm of l3] (l4) {
+        \tikz\node[label=uncertain]{COMPONENT 4};\\[2pt]
+        \textbf{Constrained Recourse Gate}
     };
-    \node[output, right=0.3cm of l4] (o4) {$\rightarrow$ Actionable recommendations\\$\rightarrow$ Clinical safety override};
 
     % Output
-    \node[input, below=0.6cm of l4, fill=darkblue!10, draw=darkblue] (out) {Clinical Decision Support Report\\+ Interactive Dashboard};
+    \node[input, below=0.6cm of l4, fill=darkblue!10, draw=darkblue] (out) {Reproducible Results\\(CSV / JSON outputs)};
 
     % Arrows
     \draw[arr] (inp) -- (l1);
@@ -262,119 +249,89 @@ The \textbf{Causal-Audit Decision Support System (CA-DSS)} is a four-layer seque
     \draw[arr] (l2) -- (l3);
     \draw[arr] (l3) -- (l4);
     \draw[arr] (l4) -- (out);
-
-    % Safety override annotation
-    \draw[thick, red, dashed, -{Stealth[length=2.5mm]}] ([xshift=-2.2cm]l2.south) -- ([xshift=-2.2cm]l4.north) node[midway, left, font=\scriptsize, text=red, align=right] {Safety\\Override:\\Block if\\ALL fragile};
 \end{tikzpicture}
-\caption{CausalShield four-layer architecture. Each layer feeds into the next. Layer~2 (Causal Audit) is the core novelty. A safety override path (red dashed) blocks all recommendations when every audited feature is classified as FRAGILE.}
+\caption{CausalShield pipeline architecture. Component~1 selects XGBoost by grouped cross-validation and computes held-out TreeSHAP values. Component~2 audits five primary timing-eligible features via cross-fitted AIPW, common-support trimming, and E-value sensitivity analysis. Component~3 reports subgroup performance and disparate-impact ratios. Component~4 applies an actionability-first recourse gate.}
 \label{fig:arch}
-\end{figure*}
+\end{figure}
 
-\subsection{Layer 1: Prediction \& Associative Explanation}
+\subsection{Component~1: Prediction \& Explanation}
 
-\subsubsection{Gradient Boosted Trees (GBM)}
-We employ a GBM classifier~\cite{chen2016xgboost} with $K=200$ trees, maximum depth 5, learning rate 0.1, and subsample rate 0.8. The model minimizes the regularized logistic loss:
-\begin{equation}
-\mathcal{L} = \sum_{i=1}^{n} \ell(y_i, \hat{y}_i) + \sum_{k=1}^{K} \left[\gamma T_k + \tfrac{1}{2}\lambda\|w_k\|^2\right]
-\end{equation}
-where $\ell$ is the logistic loss, $T_k$ is the number of leaves, and $w_k$ are leaf weights.
+\subsubsection{Model Selection}
+We train five unweighted candidate classifiers: Logistic Regression, Random Forest (120 trees, minimum leaf size 5), Gradient Boosting (200 estimators, learning rate 0.05, depth 3, subsample 0.8), XGBoost (200 estimators, learning rate 0.05, depth 3, subsample 0.8), and LightGBM (200 estimators, learning rate 0.05, depth 3, subsample 0.8). Model selection uses 5-fold patient-grouped cross-validation on the combined train+validation set (80\% of the cohort); the candidate with the highest mean fold AUC-ROC is retrained on the full development set before held-out evaluation.
 
-\subsubsection{SHAP TreeExplainer}
-For patient $\mathbf{x}_i$, the prediction decomposes additively:
+\textbf{Grouped splitting.} To prevent data leakage from repeat encounters of the same patient, we use \texttt{GroupShuffleSplit} with patient ID as the grouping key. This ensures no patient appears in more than one split.
+
+\subsubsection{Selected Model}
+The selected predictor is XGBoost~\cite{chen2016xgboost}, configured with 200 estimators, learning rate 0.05, maximum depth 3, and subsampling rate 0.8. LightGBM~\cite{ke2017lightgbm} and scikit-learn gradient boosting~\cite{friedman2001greedy} are separate candidate implementations, not aliases for XGBoost.
+
+\subsubsection{TreeSHAP Explanations}
+For every held-out encounter, we compute exact Shapley values using TreeExplainer~\cite{lundberg2020local}. The prediction for patient $\mathbf{x}_i$ decomposes additively:
 \begin{equation}
 \hat{y}_i = \phi_0 + \sum_{j=1}^{p} \phi_j(\mathbf{x}_i)
 \end{equation}
-where $\phi_0$ is the baseline (population average) and $\phi_j$ is the Shapley value for feature $j$:
+where $\phi_0$ is the baseline (population average) and $\phi_j$ is the Shapley value for feature $j$. The SHAP ranking prioritizes candidate features; only non-demographic features that pass a single timing-eligibility rule (pre-encounter, not coded at discharge) are audited in Component~2; five features qualify within the top-20 SHAP ranks.
+
+\subsubsection{Permutation Importance}
+As a complementary measure, feature importance is also assessed via permutation importance on the held-out test set, measuring the mean decrease in AUC-ROC when each feature is randomly shuffled (5 repeats).
+
+\subsection{Component~2: SHAP-Guided Causal Audit}
+
+The SHAP ranking is used only to prioritize hypotheses. All five non-demographic features that pass the timing eligibility screen (within the top-20 SHAP ranks) are audited as binary exposures using the AIPW estimator~\cite{chernozhukov2018doubleml} with patient-grouped 5-fold cross-fitting.
+
+\subsubsection{Exposure Definitions and Timing Eligibility}
+For binary features (e.g., \texttt{insulin\_prescribed}), the observed value is used directly. For counts (e.g., \texttt{number\_inpatient}), exposure is defined as above the median. The timing eligibility rule excludes discharge disposition codes, length of stay, procedure and medication counts, diagnosis counts, and diagnosis-group indicators because these are recorded during or at discharge. Medication flags are retained as exploratory exposure candidates, but their exact clinical timing is unavailable in this administrative extract. This binarisation trades dose-response nuance for methodological uniformity.
+
+\subsubsection{AIPW Estimator}
+The estimator proceeds in three stages with 5-fold cross-fitting (all nuisance models are evaluated out-of-fold):
+
+\textbf{Stage 1 (Propensity):} Unweighted logistic regression estimates $\hat{e}(\mathbf{X}_i) = \hat{P}(T\!=\!1 \mid \mathbf{X}_i)$. Estimation is restricted to the common-support subset $0.10 < \hat e(\mathbf{X}_i) < 0.90$ rather than clipping scores.
+
+\textbf{Stage 2 (Outcome):} Separate HistGradientBoosting classifiers (60 iterations, at most 15 leaf nodes, L2 regularization 1.0) for each exposure arm:
+$\hat{\mu}_t(\mathbf{X}_i) = \hat{E}[Y \mid T\!=\!t, \mathbf{X}_i]$ for $t \in \{0, 1\}$.
+
+\textbf{Stage 3 (Doubly Robust Score):}
 \begin{equation}
-\phi_j = \!\!\sum_{S \subseteq F \setminus \{j\}} \!\!\frac{|S|!\,(|F|\!-\!|S|\!-\!1)!}{|F|!} \left[f_{S \cup \{j\}}(\mathbf{x}_i) - f_S(\mathbf{x}_i)\right]
-\end{equation}
-
-The top-$K$ features by mean absolute SHAP value ($K\!=\!7$) are selected for causal auditing.
-
-\subsection{Layer 2: Causal Audit (Core Novelty)}
-
-For each top SHAP feature, treated as binary treatment $T$, we estimate the Conditional Average Treatment Effect (CATE) using Doubly Robust (DR) estimation~\cite{chernozhukov2018doubleml}.
-
-\subsubsection{Doubly Robust Estimation (AIPW)}
-The AIPW estimator proceeds in three stages with 5-fold cross-fitting:
-
-\textbf{Stage 1 (Propensity):} Random Forest Classifier estimates treatment probability $\hat{m}(\mathbf{X}_i) = \hat{P}(T\!=\!1 \mid \mathbf{X}_i)$, clipped to $[0.05, 0.95]$.
-
-\textbf{Stage 2 (Outcome):} Separate RF Regressors for each treatment arm:
-$\hat{g}_t(\mathbf{X}_i) = \hat{E}[Y \mid T\!=\!t, \mathbf{X}_i]$ for $t \in \{0, 1\}$.
-
-\textbf{Stage 3 (DR Score):}
-\begin{equation}
-\hat{\psi}_i = \underbrace{(\hat{g}_1 - \hat{g}_0)}_{\text{outcome adj.}} + \underbrace{\frac{T_i(Y_i - \hat{g}_1)}{\hat{m}(\mathbf{X}_i)}}_{\text{treated corr.}} - \underbrace{\frac{(1\!-\!T_i)(Y_i - \hat{g}_0)}{1 - \hat{m}(\mathbf{X}_i)}}_{\text{untreated corr.}}
+\hat{\psi}_i = \underbrace{(\hat{\mu}_1 - \hat{\mu}_0)}_{\text{outcome adj.}} + \underbrace{\frac{T_i(Y_i - \hat{\mu}_1)}{\hat{e}(\mathbf{X}_i)}}_{\text{treated corr.}} - \underbrace{\frac{(1\!-\!T_i)(Y_i - \hat{\mu}_0)}{1 - \hat{e}(\mathbf{X}_i)}}_{\text{untreated corr.}}
 \label{eq:aipw}
 \end{equation}
 
-The CATE estimate is $\hat{\theta} = n^{-1}\sum_i \hat{\psi}_i$ with $\text{SE} = \text{std}(\hat{\psi})/\!\sqrt{n}$.
+Both risk differences and risk ratios are estimated, with delta-method inference for $\log(RR)$.
 
-\textbf{Key property:} Eq.~\eqref{eq:aipw} is consistent if \textit{either} $\hat{m}$ or $\hat{g}$ is correctly specified --- hence ``doubly robust.''
+\textbf{Key property:} Eq.~\eqref{eq:aipw} is consistent if \textit{either} the propensity model or the outcome model is correctly specified --- hence ``doubly robust.''
 
 \subsubsection{E-Value Sensitivity Analysis}
-Following VanderWeele and Ding~\cite{vanderweele2017evalue}:
+Following VanderWeele and Ding~\cite{vanderweele2017evalue}, the E-value is computed from the risk ratio CI bound closest to 1:
 \begin{equation}
-RR = \exp(\text{CI}_{\text{bound}}), \qquad E = RR + \sqrt{RR(RR - 1)}
+E = RR_{\text{bound}} + \sqrt{RR_{\text{bound}} \cdot (RR_{\text{bound}} - 1)}
 \end{equation}
-The E-value quantifies the minimum confounder strength needed to nullify the result. Features are classified per Table~\ref{tab:thresholds}.
+The E-value quantifies the minimum strength of an unmeasured confounder association (with both exposure and outcome) needed to shift the confidence interval to include the null. Features are categorised as:
+\begin{itemize}[leftmargin=*, nosep]
+    \item \textbf{ROBUST} ($E > 3$): Association is comparatively resistant to unmeasured confounding.
+    \item \textbf{UNCERTAIN} ($2 < E \leq 3$): Intermediate sensitivity.
+    \item \textbf{FRAGILE} ($E \leq 2$): A relatively weak unmeasured confounder could explain the association.
+\end{itemize}
 
-\begin{table}[htbp]
-\caption{Feature Classification by E-Value}
-\centering
-\renewcommand{\arraystretch}{1.1}
-\begin{tabular}{>{\bfseries}l c l}
-\toprule
-\textbf{Status} & \textbf{E-Value} & \textbf{Recourse Action} \\
-\midrule
-\cellcolor{robust!15}ROBUST & $E > 3.0$ & \cellcolor{robust!15}Safe for recommendations \\
-\cellcolor{uncertain!15}UNCERTAIN & $2.0 < E \leq 3.0$ & \cellcolor{uncertain!15}Flag for clinical review \\
-\cellcolor{fragile!15}FRAGILE & $E \leq 2.0$ & \cellcolor{fragile!15}Exclude from recourse \\
-\cellcolor{protected!15}PROTECTED & N/A & \cellcolor{protected!15}Immutable (demographic) \\
-\bottomrule
-\end{tabular}
-\label{tab:thresholds}
-\end{table}
+\subsubsection{Confounders}
+The confounder set includes other baseline utilization counts plus one-hot encoded age, race, gender, and diagnosis-group indicators; the feature currently being audited is excluded from its own adjustment set. This is an intentionally limited proxy-confounder set; unmeasured clinical severity remains a concern. Standard errors are clustered by patient.
 
-\subsection{Layer 3: Fairness \& Confounding Audit}
+\subsection{Component~3: Subgroup Performance \& Fairness Audit}
 
-\subsubsection{Disparate Impact Analysis}
-For demographic group $g$, the disparate impact ratio is:
-\begin{equation}
-DI_g = \frac{P(\hat{Y}\!=\!1 \mid G\!=\!g)}{P(\hat{Y}\!=\!1 \mid G\!=\!g_{\text{ref}})}
-\end{equation}
-Groups with $DI < 0.80$ or $DI > 1.25$ are flagged~\cite{feldman2015fairness}.
+On the held-out test set, we compute model performance (AUC-ROC, PR-AUC, sensitivity at 0.5 threshold, mean predicted risk) stratified by demographic group (age bracket, race, gender). Because the 0.5 cutoff creates too few alerts for a stable selection-rate comparison, disparate-impact ratios use one common operating point: the top 20\% of held-out predicted risks (risk threshold 0.146). We compute $DI_g = P(\hat{Y}_{top20}\!=\!1 \mid G\!=\!g) / P(\hat{Y}_{top20}\!=\!1 \mid G\!=\!g_{\text{ref}})$, where the reference group is the largest subgroup. Groups with $DI < 0.80$ or $DI > 1.25$ are flagged~\cite{feldman2015fairness}. This is a \textit{descriptive} selection-rate audit, not a fairness certification.
 
-\subsubsection{Na\"ive vs. Causal Gap}
-A na\"ive logistic regression coefficient $\beta_j$ is compared to the DoubleML CATE. A large $|\beta_j \cdot \bar{p}(1\!-\!\bar{p}) - \text{CATE}_j|$ gap indicates confounding.
+\subsection{Component~4: Constrained Recourse Audit}
 
-\subsection{Layer 4: Safe Counterfactual Recourse}
+The recourse component is implemented as a constrained safety audit rather than
+an unconstrained feature-edit generator. It applies an \textbf{author-defined}
+actionability policy (since no clinician-validated catalogue was available for
+this administrative dataset), then records the E-value sensitivity category
+as supporting evidence. A feature passes the gate only if its policy entry is
+\texttt{allowed} \textit{and} its E-value category is ROBUST. Historical
+utilization features are blocked (non-modifiable). Medication features are
+\texttt{conditional} (not \texttt{allowed}), because the dataset lacks
+treatment-specific causal evidence and prescribing-context information.
 
-For high-risk patients ($P \geq 0.5$), we find minimum safe changes using Algorithm~\ref{alg:cf}.
-
-\begin{algorithm}[htbp]
-\caption{Safe Counterfactual Generation}
-\label{alg:cf}
-\begin{algorithmic}[1]
-\REQUIRE Patient $\mathbf{x}$, model $f$, safe features $\mathcal{A}$, data $D$
-\ENSURE Modified $\mathbf{x}'$, changes $C$
-\STATE $\mathbf{x}' \leftarrow \mathbf{x}$; \ $C \leftarrow \emptyset$
-\STATE Sort $\mathcal{A}$ by model importance (descending)
-\FOR{$j \in \mathcal{A}$}
-    \STATE $v^* \leftarrow \arg\min_{v \in \text{unique}(D_j)} f(\mathbf{x}'[j \leftarrow v])$
-    \IF{$v^* \neq x'_j$}
-        \STATE $x'_j \leftarrow v^*$; \ append $(j, x_j \to v^*)$ to $C$
-    \ENDIF
-    \IF{$f(\mathbf{x}') < 0.5$}
-        \RETURN $\mathbf{x}', C$ \hfill $\triangleright$ \textit{Risk flipped}
-    \ENDIF
-\ENDFOR
-\RETURN $\mathbf{x}', C$ \hfill $\triangleright$ \textit{Best effort}
-\end{algorithmic}
-\end{algorithm}
-
-The safe feature set is $\mathcal{A} = \mathcal{A}_{\text{actionable}} \cup \{f : \text{Status}(f) = \text{ROBUST}\}$, containing 15 clinically actionable features (7 medications, 5 discharge types, 2 HbA1c indicators, 1 medication-change flag). All FRAGILE, PROTECTED, and immutable features are \textbf{hard-blocked}.
+The gate test evaluates both the author-defined policy and a hypothetical policy that permits medication features. No feature passes either policy because the medication associations are FRAGILE and the gate requires ROBUST evidence. All 20 screened high-risk patients therefore receive \texttt{no\_validated\_recourse}.
+This is a safety output, not an absent computation.
 
 % ══════════════════════════════════════════════════════════════════════════════
 % IV. DATASET AND EXPERIMENTAL SETUP
@@ -382,16 +339,36 @@ The safe feature set is $\mathcal{A} = \mathcal{A}_{\text{actionable}} \cup \{f 
 \section{Dataset and Experimental Setup}
 
 \subsection{Dataset Description}
-We use the \textbf{UCI Diabetes 130-US Hospitals} dataset~\cite{strack2014impact}: 101,766 encounters from 130 US hospitals (1999--2008), 60 raw features, binary 30-day readmission target ($\sim$11\% prevalence).
+We use the \textbf{UCI Diabetes 130-US Hospitals} dataset~\cite{strack2014impact}: encounters from 130 US hospitals (1999--2008), with a binary 30-day readmission target.
 
 \subsection{Preprocessing Pipeline}
 \begin{enumerate}[leftmargin=*, nosep]
-    \item \textbf{Filtering:} Remove death/hospice encounters (codes 11, 13, 14, 19--21) $\rightarrow$ 99,343 records.
-    \item \textbf{ICD-9 grouping:} 14,000+ codes $\rightarrow$ 7 clinical categories (Circulatory, Respiratory, Diabetes, Injury, Musculoskeletal, Genitourinary, Neoplasms).
-    \item \textbf{Medication binarization:} 23 drugs $\rightarrow$ 2 binary flags each (prescribed, dose increased).
-    \item \textbf{Encoding:} One-hot for categorical variables; mode imputation for missing values.
-    \item \textbf{Final:} 99,343 records $\times$ 139 features $\times$ 1 binary target.
+    \item \textbf{Filtering:} Remove death/hospice encounters (discharge disposition IDs 11, 13, 14, 19, 20, 21) $\rightarrow$ 99,343 records.
+    \item \textbf{Target variable:} Binary indicator for readmission within 30 days ($\sim$11\% prevalence).
+    \item \textbf{Dropped columns:} \texttt{encounter\_id}, \texttt{patient\_nbr} (retained as string \texttt{patient\_id} for grouping), \texttt{weight}, \texttt{payer\_code}, \texttt{medical\_specialty}.
+    \item \textbf{ID columns:} \texttt{admission\_type\_id}, \texttt{discharge\_disposition\_id}, \texttt{admission\_source\_id} cast to string for one-hot encoding.
+    \item \textbf{Missing values:} ``?'' replaced with NaN; mode imputation for categorical columns.
+    \item \textbf{ICD-9 grouping:} Diagnosis codes mapped to 7 clinical categories (Circulatory, Respiratory, Diabetes, Injury, Musculoskeletal, Genitourinary, Neoplasms) plus Other.
+    \item \textbf{Medication binarization:} 23 medications $\rightarrow$ 2 binary flags each (prescribed, dose increased).
+    \item \textbf{Encoding:} One-hot encoding for remaining categorical variables (drop first).
 \end{enumerate}
+
+\subsection{Data Splits}
+Patient-grouped splits (using \texttt{GroupShuffleSplit}):
+\begin{table}[htbp]
+\caption{Data Split Summary}
+\centering
+\begin{tabular}{l r r}
+\toprule
+\textbf{Split} & \textbf{Encounters} & \textbf{Patients} \\
+\midrule
+Train & 59,603 & 41,994 \\
+Validation & 19,919 & 13,998 \\
+Held-out Test & 19,821 & 13,998 \\
+\bottomrule
+\end{tabular}
+\label{tab:splits}
+\end{table}
 
 \subsection{Configuration}
 \begin{table}[htbp]
@@ -403,61 +380,120 @@ We use the \textbf{UCI Diabetes 130-US Hospitals} dataset~\cite{strack2014impact
 \toprule
 \textbf{Module} & \textbf{Parameter} & \textbf{Value} \\
 \midrule
-\multirow{4}{*}{GBM} & Trees / Depth / LR & 200 / 5 / 0.1 \\
+\multirow{4}{*}{XGBoost} & Estimators / Depth / LR & 200 / 3 / 0.05 \\
  & Subsample & 0.8 \\
- & Train-Test split & 80/20 stratified \\
- & Evaluation & AUC-ROC \\
+ & Class weight & None \\
+ & Random state & 42 \\
 \midrule
-\multirow{3}{*}{DoubleML} & Nuisance learner & RF (50 trees) \\
+\multirow{2}{*}{LightGBM} & Estimators / Depth / LR & 200 / 3 / 0.05 \\
+ & Subsample / Random state & 0.8 / 42 \\
+\midrule
+\multirow{2}{*}{Logistic / RF} & Class weight & None / None \\
+ & Max iter / Estimators & 500 / 120 \\
+\midrule
+\multirow{4}{*}{AIPW} & Propensity model & Logistic Reg. (unweighted) \\
+ & Outcome model & HistGBM (60 iter) \\
  & Cross-fitting folds & 5 \\
- & Propensity clip & $[0.05, 0.95]$ \\
-\midrule
-\multirow{2}{*}{E-value} & ROBUST threshold & $E > 3.0$ \\
- & FRAGILE threshold & $E \leq 2.0$ \\
-\midrule
-\multirow{2}{*}{Recourse} & Actionable features & 15 \\
- & Flip threshold & $P < 0.50$ \\
-\midrule
-\multirow{2}{*}{Fairness} & DI lower / upper & 0.80 / 1.25 \\
- & Groups & Age, Race, Gender \\
+ & Common support & $0.10 < \hat e < 0.90$ \\
 \bottomrule
 \end{tabular}
 \label{tab:config}
 \end{table}
 
 \subsection{Implementation}
-Python 3.10, scikit-learn, SHAP, pandas, NumPy. Interactive dashboard: Streamlit. Runtime: $\sim$45 min on 16GB RAM / Intel i7. All code is open-source and reproducible.
+Python 3.14, scikit-learn, XGBoost, LightGBM, pandas, NumPy, SHAP, SciPy, and statsmodels. The local analysis is reproducible via \texttt{run\_btp\_pipeline.py}, which writes machine-readable CSV and JSON artifacts.
 
 % ══════════════════════════════════════════════════════════════════════════════
 % V. RESULTS
 % ══════════════════════════════════════════════════════════════════════════════
 \section{Results and Analysis}
 
-\subsection{Layer 1: Prediction Performance}
+\subsection{Component~1: Model Selection and Prediction Performance}
+
+Table~\ref{tab:validation} shows grouped-CV and validation performance for all five candidate models.
 
 \begin{table}[htbp]
-\caption{Prediction Model Performance}
+\caption{Model Comparison: 5-Fold Patient-Grouped CV AUC and Validation Metrics}
+\centering
+\footnotesize
+\begin{tabular}{l r r r r}
+\toprule
+\textbf{Model} & \textbf{CV AUC} & \textbf{Val AUC} & \textbf{PR-AUC} & \textbf{Brier} \\
+\midrule
+\textbf{XGBoost}    & \textbf{0.670} & \textbf{0.677} & \textbf{0.238} & \textbf{0.098} \\
+LightGBM            & 0.670 & 0.677 & 0.238 & 0.098 \\
+Gradient Boosting   & 0.669 & 0.676 & 0.234 & 0.099 \\
+Logistic Regression & 0.661 & 0.667 & 0.223 & 0.099 \\
+Random Forest       & 0.664 & 0.667 & 0.227 & 0.099 \\
+\bottomrule
+\end{tabular}
+\label{tab:validation}
+\end{table}
+
+XGBoost achieved the highest mean CV AUC-ROC (0.670) and was selected for held-out evaluation. LightGBM was close (0.670 when rounded to three decimals), while gradient boosting trailed by 0.001 AUC. All candidates used no class weighting; no causal explanation is assigned to their Brier-score differences. After retraining on train+validation, held-out test performance is reported in Table~\ref{tab:perf}.
+
+\begin{table}[htbp]
+\caption{Held-Out Test Performance (XGBoost, selected by 5-fold CV)}
 \centering
 \begin{tabular}{l r}
 \toprule
 \textbf{Metric} & \textbf{Score} \\
 \midrule
-AUC-ROC & 0.712 \\
-Accuracy & 0.891 \\
-Precision (Positive Class) & 0.44 \\
-Recall (Positive Class) & 0.34 \\
-F1-Score (Positive Class) & 0.38 \\
-Cross-Validation AUC & $0.708 \pm 0.011$ \\
+AUC-ROC & 0.664 (95\% CI: 0.649--0.678) \\
+PR-AUC & 0.222 \\
+Brier Score & 0.095 \\
+Precision (at 0.5) & 0.539 \\
+Recall (at 0.5) & 0.006 \\
+Calibration Slope & 1.077 \\
+Calibration Intercept & 0.126 \\
+\midrule
+\multicolumn{2}{l}{\textit{Top-20\% operating point (threshold 0.146)}} \\
+Sensitivity & 0.383 \\
+Specificity & 0.823 \\
+PPV & 0.213 \\
 \bottomrule
 \end{tabular}
 \label{tab:perf}
 \end{table}
 
-The AUC of 0.712 is consistent with state-of-the-art on this dataset (literature range: 0.67--0.73)~\cite{strack2014impact}. The modest recall reflects the inherent difficulty of readmission prediction from administrative data without clinical notes or real-time vitals.
+The held-out AUC-ROC is 0.664. The very low recall at the default 0.5 threshold reflects the class imbalance ($\sim$11\% positive rate). At the top-20\% operating point (risk threshold 0.146), the model achieves sensitivity 0.383, specificity 0.823, and PPV 0.213. The Brier score of 0.095 and calibration slope near 1.0 describe probability performance on this held-out split.
 
-\subsection{Layer 1: SHAP Explanation}
+\subsection{Component~1: Feature Importance}
 
-% ── FIGURE 3: SHAP bar chart ───────────────────────────────────────────────
+TreeSHAP was computed for every held-out encounter. Table~\ref{tab:shap_top} shows the top 12 features by mean absolute SHAP value. The ranking is used solely to prioritize features for the Component~2 audit; it is not a causal ranking. Disposition and within-encounter utilization features (e.g., \texttt{discharge\_disposition\_3}, \texttt{discharge\_disposition\_22}) are prominent in the predictive ranking but excluded because they are post-treatment or in-encounter variables. Diagnosis-group features (\texttt{diag\_1\_*}, \texttt{diag\_2\_*}) are also excluded: ICD codes are assigned at discharge, placing them in the same post-decision category as discharge disposition and \texttt{number\_diagnoses}. This single timing rule yields five eligible pre-encounter and medication features for the audit: \texttt{number\_inpatient}, \texttt{diabetesMed\_Yes}, \texttt{number\_emergency}, \texttt{metformin\_prescribed}, and \texttt{insulin\_prescribed}.
+
+\begin{table}[htbp]
+\caption{Top 12 Features by Mean Absolute SHAP (held-out test set)}
+\centering
+\footnotesize
+\begin{threeparttable}
+\begin{tabular}{r l r}
+\toprule
+\textbf{Rank} & \textbf{Feature} & \textbf{Mean $|\phi|$} \\
+\midrule
+1 & number\_inpatient & 0.3230 \\
+2 & discharge\_disposition\_3$^\dagger$ & 0.0695 \\
+3 & number\_diagnoses$^\dagger$ & 0.0577 \\
+4 & discharge\_disposition\_22$^\dagger$ & 0.0563 \\
+5 & time\_in\_hospital$^\dagger$ & 0.0438 \\
+6 & diabetesMed\_Yes & 0.0421 \\
+7 & num\_medications$^\dagger$ & 0.0301 \\
+8 & number\_emergency & 0.0293 \\
+9 & age\_[50-60) & 0.0267 \\
+10 & metformin\_prescribed & 0.0257 \\
+11 & diag\_1\_group\_Respiratory$^\dagger$ & 0.0220 \\
+12 & discharge\_disposition\_5$^\dagger$ & 0.0211 \\
+\bottomrule
+\end{tabular}
+\begin{tablenotes}
+\scriptsize
+\item $^\dagger$ Excluded from Component~2 audit: post-discharge-coded diagnosis, disposition, or within-encounter utilization variable.
+\end{tablenotes}
+\end{threeparttable}
+\label{tab:shap_top}
+\end{table}
+
+% ── FIGURE 3: Permutation Importance ───────────────────────────────────────
 \begin{figure}[htbp]
 \centering
 \begin{tikzpicture}
@@ -465,217 +501,178 @@ The AUC of 0.712 is consistent with state-of-the-art on this dataset (literature
     xbar,
     width=0.95\columnwidth,
     height=6.5cm,
-    xlabel={Mean |SHAP Value|},
+    xlabel={Mean AUC-ROC Decrease},
     xlabel style={font=\small},
     ytick=data,
     yticklabels={
-        Metformin,
+        Discharge Disp.~6,
+        DiabetesMed,
+        Diag 1 Respiratory,
+        Num Emergency,
         Time in Hospital,
+        Diag 1 Other,
         Num Diagnoses,
-        Admission Type,
-        Num Medications,
-        HbA1c Level,
-        Discharge Disp.,
-        Num Inpatient,
-        Num Lab Procs,
-        Insulin
+        Discharge Disp.~5,
+        Discharge Disp.~2,
+        Discharge Disp.~3,
+        Discharge Disp.~22,
+        Num Inpatient
     },
     yticklabel style={font=\scriptsize},
     xticklabel style={font=\scriptsize},
-    xmin=0, xmax=0.15,
-    bar width=8pt,
+    xmin=0, xmax=0.08,
+    bar width=7pt,
     nodes near coords,
     nodes near coords style={font=\tiny, /pgf/number format/.cd, fixed, precision=3},
-    every node near coord/.append style={anchor=west},
-    enlarge y limits={abs=0.4cm},
+    enlarge y limits={abs=0.35cm},
 ]
 \addplot[fill=layer1!60, draw=layer1] coordinates {
-    (0.038,0)
-    (0.041,1)
-    (0.047,2)
-    (0.051,3)
-    (0.058,4)
-    (0.063,5)
-    (0.076,6)
-    (0.087,7)
-    (0.091,8)
-    (0.124,9)
+    (0.002,0)
+    (0.002,1)
+    (0.002,2)
+    (0.002,3)
+    (0.002,4)
+    (0.003,5)
+    (0.005,6)
+    (0.007,7)
+    (0.007,8)
+    (0.015,9)
+    (0.021,10)
+    (0.070,11)
 };
 \end{axis}
 \end{tikzpicture}
-\caption{Top 10 SHAP feature importance values for a representative high-risk patient ($P = 0.78$). All positive values indicate features that \textit{increase} predicted readmission risk. Layer~2 will audit whether these associations are causal.}
-\label{fig:shap}
+\caption{Top 12 features by permutation importance (mean AUC-ROC decrease, 5 repeats). \texttt{number\_inpatient} dominates, followed by several discharge disposition categories. Values are rounded to 3 decimal places.}
+\label{fig:importance}
 \end{figure}
 
-Fig.~\ref{fig:shap} shows the SHAP importance ranking. Insulin dominates ($+0.124$), followed by lab procedures ($+0.091$) and inpatient visits ($+0.087$). Critically, \textit{all} of these are potential severity proxies --- Layer~2 will determine which are genuinely causal.
+Fig.~\ref{fig:importance} shows the permutation importance ranking. The \texttt{number\_inpatient} feature dominates ($\Delta$AUC = 0.068), followed by several discharge disposition categories. Notably, many of the top features are administrative/disposition indicators rather than clinical measurements, consistent with the known limitations of this dataset. These post-encounter or within-encounter variables are excluded from the Component~2 exposure audit.
 
-\subsection{Layer 2: Causal Audit Results}
+\subsection{Component~2: SHAP-Guided Causal Audit}
 
-% ── FIGURE 4: SHAP vs CATE comparison ──────────────────────────────────────
-\begin{figure}[htbp]
+Table~\ref{tab:causal} presents the merged SHAP-direction and AIPW audit for all five eligible features. SHAP direction = sign of corr$(x_j,\phi_j)$ on the held-out set; it is a predictive descriptor, not a causal estimate. BH = Benjamini--Hochberg FDR-adjusted q-value; E-value thresholds of 2 and 3 are conventional. Analysis sample: full cohort (all encounters); SE clustered by patient\_id.
+
+\begin{table*}[htbp]
+\caption{CausalShield Audit: SHAP Direction vs.~AIPW Adjusted Estimates (five eligible features)}
 \centering
-\begin{tikzpicture}
-\begin{axis}[
-    ybar,
-    width=0.98\columnwidth,
-    height=5.5cm,
-    ylabel={Effect Size},
-    ylabel style={font=\small},
-    symbolic x coords={Insulin, Labs, Inpatient, Discharge, HbA1c, Meds, Admit, Diag, Time, Metf},
-    xtick=data,
-    xticklabel style={font=\tiny, rotate=35, anchor=east},
-    yticklabel style={font=\scriptsize},
-    ymin=-0.04, ymax=0.14,
-    bar width=5pt,
-    legend style={at={(0.5,0.97)}, anchor=north, font=\scriptsize, legend columns=2},
-    enlarge x limits=0.08,
-    grid=major,
-    grid style={gray!20},
-]
-% SHAP values
-\addplot[fill=layer1!50, draw=layer1] coordinates {
-    (Insulin, 0.124)
-    (Labs, 0.091)
-    (Inpatient, 0.087)
-    (Discharge, 0.076)
-    (HbA1c, 0.063)
-    (Meds, 0.058)
-    (Admit, 0.051)
-    (Diag, 0.047)
-    (Time, 0.041)
-    (Metf, 0.038)
-};
-% CATE values
-\addplot[fill=layer2!50, draw=layer2] coordinates {
-    (Insulin, -0.021)
-    (Labs, 0.008)
-    (Inpatient, 0.041)
-    (Discharge, 0.093)
-    (HbA1c, 0.067)
-    (Meds, 0.019)
-    (Admit, 0.031)
-    (Diag, 0.028)
-    (Time, 0.052)
-    (Metf, -0.009)
-};
-\legend{SHAP (Correlational), CATE (Causal)}
-\end{axis}
-\end{tikzpicture}
-\caption{SHAP importance vs. DoubleML CATE for each feature. Note the \textbf{sign reversal} for insulin (SHAP: $+0.124$, CATE: $-0.021$) --- the model's \#1 feature is \textit{anti-causal}. Discharge disposition's CATE ($+0.093$) actually \textit{exceeds} its SHAP value, confirming genuine causality.}
-\label{fig:shap_vs_cate}
-\end{figure}
-
-Table~\ref{tab:causal} presents the full causal audit results. Fig.~\ref{fig:shap_vs_cate} visualizes the SHAP vs. CATE comparison.
-
-\begin{table}[htbp]
-\caption{Layer 2 Causal Audit: CATE, E-Value, and Classification}
-\centering
-\footnotesize
+\scriptsize
 \renewcommand{\arraystretch}{1.1}
-\begin{tabular}{l r r c l}
+\begin{threeparttable}
+\begin{tabular}{l r l r r r r r r r l}
 \toprule
-\textbf{Feature} & \textbf{CATE} & \textbf{E-val} & \textbf{Status} & \textbf{Clinical Note} \\
+\textbf{Feature} & \textbf{Rank} & \textbf{SHAP dir.} & \textbf{RD} & \textbf{RD 95\% CI} & \textbf{RR} & \textbf{RR 95\% CI} & \textbf{E-val} & \textbf{Ret.\%} & \textbf{SMD} & \textbf{Cat.} \\
 \midrule
-Insulin & $-0.021$ & 1.24 & \cellcolor{fragile!15}FRAG & Confounded \\
-Num labs & $+0.008$ & 1.31 & \cellcolor{fragile!15}FRAG & Severity proxy \\
-Inpatient visits & $+0.041$ & 1.89 & \cellcolor{fragile!15}FRAG & Partially conf. \\
-\textbf{Discharge} & $\mathbf{+0.093}$ & $\mathbf{4.10}$ & \cellcolor{robust!15}\textbf{ROB} & \textbf{Genuine cause} \\
-\textbf{HbA1c} & $\mathbf{+0.067}$ & $\mathbf{3.21}$ & \cellcolor{robust!15}\textbf{ROB} & \textbf{Glycemic ctrl} \\
-Num meds & $+0.019$ & 1.42 & \cellcolor{fragile!15}FRAG & Polypharmacy \\
-Admission type & $+0.031$ & 1.67 & \cellcolor{fragile!15}FRAG & Severity refl. \\
-Num diagnoses & $+0.028$ & 1.55 & \cellcolor{fragile!15}FRAG & Comorbidity \\
-\textbf{Time in hosp.} & $\mathbf{+0.052}$ & $\mathbf{2.84}$ & \cellcolor{robust!15}\textbf{ROB} & \textbf{Genuine link} \\
-Metformin & $-0.009$ & 1.19 & \cellcolor{fragile!15}FRAG & Confounded \\
+Num inpatient    & 1  & Raises & $+.072$ & $[+.067,+.078]$ & 1.82 & $[1.75,1.89]$ & 2.90 & 99.2 & 0.015 & \cellcolor{uncertain!15}UNCERTAIN \\
+DiabetesMed      & 5  & Raises & $+.014$ & $[+.009,+.019]$ & 1.13 & $[1.09,1.19]$ & 1.39 & 99.6 & 0.012 & \cellcolor{fragile!15}FRAGILE \\
+Num emergency    & 7  & Raises & $+.021$ & $[+.010,+.032]$ & 1.15 & $[1.07,1.23]$ & 1.36 & 38.8 & 0.052 & \cellcolor{fragile!15}FRAGILE \\
+Metformin        & 10 & Lowers & $-.007$ & $[-.012,-.001]$ & 0.94 & $[0.89,0.99]$ & 1.12 & 92.0 & 0.017 & \cellcolor{fragile!15}FRAGILE \\
+Insulin          & 11 & Raises & $+.013$ & $[+.009,+.017]$ & 1.12 & $[1.08,1.16]$ & 1.37 & 99.8 & 0.009 & \cellcolor{fragile!15}FRAGILE \\
 \bottomrule
 \end{tabular}
+\begin{tablenotes}
+\scriptsize
+\item Ret.\% = retained encounters after propensity trimming (0.10--0.90). SMD = max post-weighting standardised mean difference. BH q-values: inpatient $<$0.001, diabetesMed $<$0.001, emergency $<$0.001, metformin 0.050, insulin $<$0.001. Diagnosis-group features excluded: ICD codes assigned at discharge. E-value thresholds 2 and 3 are conventional.
+\end{tablenotes}
+\end{threeparttable}
 \label{tab:causal}
-\end{table}
+\end{table*}
 
-\textbf{Key findings:}
-\begin{itemize}[leftmargin=*, nosep]
-    \item \textbf{70\% FRAGILE:} 7/10 top SHAP features fail the causal audit.
-    \item \textbf{Insulin sign reversal:} SHAP says $+0.124$ (harmful); CATE says $-0.021$ (protective/neutral). This is the most dangerous feature for na\"ive XAI.
-    \item \textbf{3 ROBUST features:} Discharge disposition ($E\!=\!4.10$), HbA1c ($E\!=\!3.21$), and time in hospital ($E\!=\!2.84$) survive the audit.
-\end{itemize}
+Table~\ref{tab:causal} compares the held-out model direction with the adjusted observational direction. ``Model direction'' is the sign of the held-out correlation between a feature's value and its SHAP contribution, not a treatment effect. All five directions agree in this audit, so this experiment does not demonstrate a sign reversal for insulin. Crucially, directional agreement does not establish causal validity: four associations are FRAGILE and one is UNCERTAIN; none is a valid recourse target.
 
-% ── FIGURE 5: E-value classification ────────────────────────────────────────
+% ── FIGURE 4: E-value chart ───────────────────────────────────────────────
 \begin{figure}[htbp]
 \centering
 \begin{tikzpicture}
 \begin{axis}[
     xbar,
     width=0.95\columnwidth,
-    height=5.5cm,
-    xlabel={E-Value},
+    height=5.2cm,
+    xlabel={E-Value (CI bound)},
     xlabel style={font=\small},
     ytick=data,
     yticklabels={
         Metformin,
+        Num emergency,
         Insulin,
-        Num Labs,
-        Num Meds,
-        Num Diagnoses,
-        Admission Type,
-        Inpatient Visits,
-        Time in Hospital,
-        HbA1c Level,
-        Discharge Disp.
+        DiabetesMed,
+        Num inpatient
     },
     yticklabel style={font=\scriptsize},
     xticklabel style={font=\scriptsize},
-    xmin=0, xmax=5,
+    xmin=0, xmax=3.2,
     bar width=7pt,
     enlarge y limits={abs=0.35cm},
     extra x ticks={2.0, 3.0},
     extra x tick labels={},
     extra x tick style={grid=major, grid style={red, dashed, thick}},
 ]
-% FRAGILE bars (red)
+% FRAGILE bars (red) - 4 FRAGILE features
 \addplot[fill=fragile!40, draw=fragile] coordinates {
-    (1.19,0) (1.24,1) (1.31,2) (1.42,3) (1.55,4) (1.67,5) (1.89,6)
+    (1.12,0) (1.36,1) (1.37,2) (1.39,3)
 };
-% ROBUST bars (green)
-\addplot[fill=robust!40, draw=robust] coordinates {
-    (2.84,7) (3.21,8) (4.10,9)
+% UNCERTAIN bars (yellow) - 1 UNCERTAIN feature
+\addplot[fill=uncertain!40, draw=uncertain] coordinates {
+    (2.90,4)
 };
 
 % Threshold labels
-\node[font=\tiny, text=red, anchor=south] at (axis cs:2.0,9.5) {$E\!=\!2$};
-\node[font=\tiny, text=red, anchor=south] at (axis cs:3.0,9.5) {$E\!=\!3$};
+\node[font=\tiny, text=red, anchor=south] at (axis cs:2.0,4.5) {$E\!=\!2$};
+\node[font=\tiny, text=red, anchor=south] at (axis cs:3.0,4.5) {$E\!=\!3$};
 \end{axis}
 
 % Legend
-\node[font=\scriptsize, fill=fragile!30, draw=fragile, rounded corners=2pt, inner sep=2pt] at (5.8, 0.6) {\textbf{FRAGILE}};
-\node[font=\scriptsize, fill=robust!30, draw=robust, rounded corners=2pt, inner sep=2pt] at (5.8, 1.3) {\textbf{ROBUST}};
+\node[font=\scriptsize, fill=fragile!30, draw=fragile, rounded corners=2pt, inner sep=2pt] at (3.8, 0.5) {\textbf{FRAGILE}};
+\node[font=\scriptsize, fill=uncertain!30, draw=uncertain, rounded corners=2pt, inner sep=2pt] at (3.8, 1.2) {\textbf{UNCERTAIN}};
 \end{tikzpicture}
-\caption{E-value classification of top-10 SHAP features. Red dashed lines mark the FRAGILE ($E \leq 2$) and ROBUST ($E > 3$) thresholds. Only 3 features (green) survive --- discharge disposition, HbA1c, and time in hospital.}
+\caption{E-value sensitivity classification of the five temporally eligible audit features. Red dashed lines mark the FRAGILE ($E \leq 2$) and ROBUST ($E > 3$) thresholds. No eligible feature reaches ROBUST; only \texttt{number\_inpatient} ($E = 2.90$) reaches UNCERTAIN.}
 \label{fig:evalue}
 \end{figure}
 
-\subsection{Na\"ive vs. Causal Comparison}
+\textbf{Key findings:}
+\begin{itemize}[leftmargin=*, nosep]
+    \item \textbf{No ROBUST association:} Four of five estimates are FRAGILE ($E \leq 2$); only \texttt{number\_inpatient} ($E = 2.90$) reaches UNCERTAIN.
+    \item \textbf{Number inpatient} ($E = 2.90$, UNCERTAIN): Strongest SHAP-ranked audit feature, but it is historical utilization, not an intervention target.
+    \item \textbf{Medication features:} Insulin, metformin, and any diabetes medication remain FRAGILE; their observed directions must not be interpreted as treatment effects.
+    \item Sensitivity categories quantify the strength of unmeasured confounding needed to move a risk-ratio confidence bound to 1; they do \textit{not} establish that any feature is a valid intervention target.
+\end{itemize}
+
+\subsection{Component~3: Subgroup Performance Audit}
+
+Table~\ref{tab:subgroup} summarizes model performance across demographic subgroups on the held-out test set.
 
 \begin{table}[htbp]
-\caption{Confounding Detection: Na\"ive Effect vs. Causal CATE}
+\caption{Held-Out Subgroup Performance}
 \centering
 \footnotesize
-\begin{tabular}{l r r r l}
+\renewcommand{\arraystretch}{1.05}
+\begin{tabular}{ll r r r r}
 \toprule
-\textbf{Feature} & \textbf{Na\"ive} & \textbf{CATE} & \textbf{Gap} & \textbf{Verdict} \\
+\textbf{Group} & \textbf{Value} & \textbf{N} & \textbf{Prev.} & \textbf{AUC} & \textbf{Mean $\hat{P}$} \\
 \midrule
-Num inpatient & $+0.035$ & $+0.074$ & 0.039 & Heavily conf. \\
-Num meds & $+0.003$ & $+0.011$ & 0.008 & Mildly conf. \\
-Time in hosp. & $+0.006$ & $+0.012$ & 0.006 & Mildly conf. \\
-Num diagnoses & $+0.011$ & $+0.009$ & 0.001 & Clean \\
+\multirow{9}{*}{Age} & [10--20) & 125 & 7.2\% & 0.765 & 0.084 \\
+ & [20--30) & 342 & 14.9\% & 0.762 & 0.137 \\
+ & [30--40) & 776 & 9.5\% & 0.708 & 0.115 \\
+ & [40--50) & 1,828 & 9.6\% & 0.628 & 0.105 \\
+ & [50--60) & 3,460 & 9.4\% & 0.671 & 0.102 \\
+ & [60--70) & 4,447 & 11.0\% & 0.669 & 0.112 \\
+ & [70--80) & 5,032 & 12.1\% & 0.657 & 0.119 \\
+ & [80--90) & 3,290 & 12.9\% & 0.629 & 0.122 \\
+ & [90--100) & 482 & 10.4\% & 0.585 & 0.119 \\
+\midrule
+\multirow{5}{*}{Race} & AfricanAmerican & 3,801 & 11.2\% & 0.657 & 0.115 \\
+ & Asian & 125 & 9.6\% & 0.677 & 0.096 \\
+ & Caucasian & 15,232 & 11.2\% & 0.663 & 0.114 \\
+ & Hispanic & 372 & 10.5\% & 0.716 & 0.105 \\
+ & Other & 291 & 6.9\% & 0.719 & 0.103 \\
+\midrule
+\multirow{2}{*}{Gender} & Male & 9,014 & 11.2\% & 0.667 & 0.113 \\
+ & Female & 10,807 & 11.1\% & 0.661 & 0.114 \\
 \bottomrule
 \end{tabular}
-\label{tab:comparison}
+\label{tab:subgroup}
 \end{table}
 
-The \texttt{number\_inpatient} feature shows the largest confounding gap (0.039): the na\"ive model \textit{underestimates} its true causal effect by approximately 50\%.
-
-\subsection{Fairness Audit}
-
-% ── FIGURE 6: Fairness chart ───────────────────────────────────────────────
+% ── FIGURE 5: Subgroup AUC ──────────────────────────────────────────────────
 \begin{figure}[htbp]
 \centering
 \begin{tikzpicture}
@@ -683,139 +680,124 @@ The \texttt{number\_inpatient} feature shows the largest confounding gap (0.039)
     ybar,
     width=0.95\columnwidth,
     height=5cm,
-    ylabel={Disparate Impact Ratio},
+    ylabel={AUC-ROC},
     ylabel style={font=\small},
-    symbolic x coords={10-20, 20-30, 30-40, 40-50, 50-60, 60-70, 70-80, 80-90, 90-100},
+    symbolic x coords={[10-20), [20-30), [30-40), [40-50), [50-60), [60-70), [70-80), [80-90), [90-100)},
     xtick=data,
     xticklabel style={font=\tiny, rotate=35, anchor=east},
     yticklabel style={font=\scriptsize},
-    ymin=0, ymax=6,
+    ymin=0.5, ymax=0.85,
     bar width=8pt,
     enlarge x limits=0.1,
-    extra y ticks={0.80, 1.25},
-    extra y tick labels={0.80, 1.25},
-    extra y tick style={grid=major, grid style={red, dashed, thick}, tick label style={font=\tiny, text=red}},
 ]
 \addplot[fill=layer1!50, draw=layer1] coordinates {
-    (10-20, 0.80)
-    (20-30, 5.34)
-    (30-40, 1.61)
-    (40-50, 1.17)
-    (50-60, 0.90)
-    (60-70, 0.86)
-    (70-80, 1.00)
-    (80-90, 0.83)
-    (90-100, 1.07)
+    ([10-20), 0.765)
+    ([20-30), 0.762)
+    ([30-40), 0.708)
+    ([40-50), 0.628)
+    ([50-60), 0.671)
+    ([60-70), 0.669)
+    ([70-80), 0.657)
+    ([80-90), 0.629)
+    ([90-100), 0.585)
 };
-
-% Annotations for violations
-\node[font=\tiny, text=red, above, anchor=south] at (axis cs:20-30, 5.34) {\textbf{5.34$\times$}};
-\node[font=\tiny, text=red, above, anchor=south] at (axis cs:30-40, 1.61) {\textbf{1.61$\times$}};
 \end{axis}
 \end{tikzpicture}
-\caption{Disparate impact ratios by age group. Red dashed lines show the 80\% rule thresholds ($0.80$--$1.25$). Young adults (20--30) are flagged at $5.34\times$ the reference rate, indicating significant age-based prediction bias.}
-\label{fig:fairness}
+\caption{AUC-ROC by age group on the held-out test set. Model discrimination is higher for younger patients but degrades for older age groups, particularly [90--100) where AUC drops to 0.585.}
+\label{fig:subgroup_auc}
 \end{figure}
 
-The model exhibits significant disparate impact for younger patients. The 20--30 age group is flagged at $5.34\times$ the reference rate, likely because diabetes severity markers that are unusual in younger patients receive disproportionate attention from the model. The racial ``Other'' category ($DI = 0.72$) is under-predicted.
+\textbf{Key observations:}
+\begin{itemize}[leftmargin=*, nosep]
+    \item Model discrimination varies substantially by age: AUC ranges from 0.765 (ages 10--20) to 0.585 (ages 90--100).
+    \item The ``Other'' racial category has the lowest prevalence (6.9\%) but relatively high AUC (0.719), likely due to the small sample size ($n = 291$).
+    \item Gender-based performance is relatively balanced (AUC 0.667 vs. 0.661).
+    \item Mean predicted risk tracks actual prevalence reasonably well across subgroups, suggesting calibration is not grossly miscalibrated for any single group.
+    \item Sensitivity at the 0.5 threshold is near zero for most subgroups, confirming that the default threshold is unsuitable for this class-imbalanced problem.
+    \item At the shared top-20\% risk operating point (threshold $= 0.146$), selection-rate disparate-impact ratios are descriptive. Ratios outside the 0.80--1.25 review band include Asian (0.45, $n=125$), Other race (0.77, $n=291$), and age groups [10--20) (0.42), [40--50) (0.71), and [50--60) (0.72). Small subgroups have substantial sampling uncertainty and these ratios are not fairness conclusions.
+\end{itemize}
 
-\subsection{Layer 4: Safe Counterfactual Recourse}
-
-Using ROBUST features and 15 always-actionable features, the counterfactual engine generates safe recommendations.
-
-% ── FIGURE 7: Counterfactual waterfall ──────────────────────────────────────
-\begin{figure}[htbp]
-\centering
-\begin{tikzpicture}[
-    node distance=0.25cm,
-    step/.style={draw, rounded corners=4pt, minimum width=6.5cm, minimum height=0.7cm, font=\small, align=left},
-    arr/.style={-{Stealth[length=2mm]}, thick, gray},
-]
-    \node[step, fill=red!15, draw=red!50] (s0) {\textbf{Original Risk: 78\%} \hfill \textcolor{red}{\textbf{HIGH}}};
-    \node[step, fill=orange!12, draw=orange!50, below=of s0] (s1) {$\Delta_1$: Discharge $\to$ SNF \hfill \textbf{35\%}};
-    \node[step, fill=yellow!12, draw=yellow!60, below=of s1] (s2) {$\Delta_2$: HbA1c controlled (7--8) \hfill \textbf{41\%}};
-    \node[step, fill=green!12, draw=green!50, below=of s2] (s3) {$\Delta_3$: SNF + HbA1c managed \hfill \textbf{28\%}};
-    \node[step, fill=green!20, draw=green!60, below=of s3] (s4) {$\Delta_4$: + Diabetes program \hfill \textbf{44\%}};
-
-    \node[step, fill=red!8, draw=red!40, dashed, below=0.5cm of s4] (blocked) {\textcolor{red}{$\times$ ``Reduce insulin''} \hfill \textcolor{red}{\textbf{BLOCKED}}};
-
-    \draw[arr] (s0) -- (s1);
-    \draw[arr] (s1) -- (s2);
-    \draw[arr] (s2) -- (s3);
-    \draw[arr] (s3) -- (s4);
-
-    % Risk reduction arrow
-    \draw[thick, green!60!black, -{Stealth[length=3mm]}] ([xshift=3.8cm]s0.east) -- ([xshift=3.8cm]s4.east)
-        node[midway, right, font=\scriptsize, text=green!50!black, align=center] {Risk\\reduced\\50 pts};
-
-    % Blocked annotation
-    \node[right=0.15cm of blocked, font=\tiny, text=red, align=left] {FRAGILE\\$E = 1.24$};
-\end{tikzpicture}
-\caption{Safe counterfactual recommendations for a patient at 78\% readmission risk. Each intervention uses \textit{only} ROBUST features. Dangerous changes (``reduce insulin'') are automatically blocked by the causal safety filter.}
-\label{fig:waterfall}
-\end{figure}
-
-Table~\ref{tab:cf} details the five diverse counterfactual recommendations.
+Table~\ref{tab:di} presents the full disparate-impact ratios at the top-20\% operating point.
 
 \begin{table}[htbp]
-\caption{Diverse Counterfactual Recommendations (ROBUST Features Only)}
+\caption{Selection-Rate Disparate Impact at the Top-20\% Risk Operating Point (threshold 0.146)}
 \centering
 \footnotesize
-\renewcommand{\arraystretch}{1.1}
-\begin{tabular}{c p{4.2cm} r r}
+\renewcommand{\arraystretch}{1.05}
+\begin{threeparttable}
+\begin{tabular}{l l r r l}
 \toprule
-\textbf{\#} & \textbf{Recommendation} & \textbf{Risk} & \textbf{$\Delta$} \\
+\textbf{Group} & \textbf{Value} & \textbf{N} & \textbf{DI ratio} & \textbf{Flag} \\
 \midrule
-1 & Discharge: Home $\to$ SNF & 35\% & $-$43pp \\
-2 & HbA1c: $>$8 $\to$ 7--8 (glycemic mgmt) & 41\% & $-$37pp \\
-3 & SNF + HbA1c in range 7--8 & 28\% & $-$50pp \\
-4 & Optimize discharge + reduce LOS & 38\% & $-$40pp \\
-5 & Diabetes program + home health & 44\% & $-$34pp \\
+\multirow{9}{*}{Age} & [10--20) & 125 & 0.50 & \cellcolor{fragile!15}review \\
+ & [20--30) & 342 & 1.12 & within \\
+ & [30--40) & 776 & 0.99 & within \\
+ & [40--50) & 1,828 & 0.73 & \cellcolor{fragile!15}review \\
+ & [50--60) & 3,460 & 0.72 & \cellcolor{fragile!15}review \\
+ & [60--70) & 4,447 & 0.87 & within \\
+ & [70--80)$^{\text{ref}}$ & 5,032 & 1.00 & — \\
+ & [80--90) & 3,290 & 1.02 & within \\
+ & [90--100) & 482 & 0.86 & within \\
+\midrule
+\multirow{5}{*}{Race} & AfricanAmerican & 3,801 & 1.11 & within \\
+ & Asian & 125 & 0.44 & \cellcolor{fragile!15}review \\
+ & Caucasian$^{\text{ref}}$ & 15,232 & 1.00 & — \\
+ & Hispanic & 372 & 0.90 & within \\
+ & Other & 291 & 0.71 & \cellcolor{fragile!15}review \\
+\midrule
+\multirow{2}{*}{Gender} & Male & 9,014 & 0.97 & within \\
+ & Female$^{\text{ref}}$ & 10,807 & 1.00 & — \\
 \bottomrule
 \end{tabular}
-\label{tab:cf}
+\begin{tablenotes}
+\scriptsize
+\item Reference group is the largest subgroup. ``Within'' = DI $\in [0.80, 1.25]$. Groups with $n < 400$ have wide uncertainty; flagged ratios are descriptive, not fairness conclusions.
+\end{tablenotes}
+\end{threeparttable}
+\label{tab:di}
 \end{table}
 
-\textbf{Clinical Safety Override:} When all audited features are FRAGILE, the system reports: ``\textit{No safe interventions exist. Risk is driven by overall medical complexity. Refer to comprehensive clinical judgment.}'' This 0\% flip rate is \textit{not a failure} --- it is the safety mechanism working as designed.
+\subsection{Constrained Recourse Audit}
 
-\subsection{End-to-End Performance Summary}
+The recourse layer applies the author-defined actionability policy before considering sensitivity metadata. Historical utilization features are blocked; medication variables are conditional on treatment-specific evidence. None of the five audited features was both policy-approved (\texttt{allowed}) and ROBUST. Consequently, all 20 screened high-risk patients received \texttt{no\_validated\_recourse}. This is a \textit{safety output}, not an absent computation.
 
-\begin{table}[htbp]
-\caption{CausalShield End-to-End Evaluation}
-\centering
-\footnotesize
-\begin{tabular}{l l r}
-\toprule
-\textbf{Criterion} & \textbf{Metric} & \textbf{Result} \\
-\midrule
-Prediction & AUC-ROC & 0.712 \\
-SHAP coverage & Features audited & 10/10 \\
-Causal safety & FRAGILE detected & 7/10 (70\%) \\
-Causal safety & ROBUST validated & 3/10 (30\%) \\
-Recourse validity & CFs using only ROBUST & 5/5 (100\%) \\
-Recourse impact & Risk reduction range & 34--50pp \\
-Clinical safety & Harmful CFs generated & 0/5 (0\%) \\
-Fairness & DI violations detected & 5 groups \\
-\bottomrule
-\end{tabular}
-\label{tab:summary}
-\end{table}
+% ── SECTION: Baseline Comparison ──────────────────────────────────────────
+\subsection{Baseline Comparison: Naive SHAP vs.\ CausalShield AIPW Audit}
+
+A naive XAI system uses TreeSHAP feature rankings as a proxy for causal importance: if \texttt{feature\_A} has high mean $|\phi|$ and $\text{corr}(x_A,\phi_A) > 0$, it is presented as raising readmission risk. CausalShield adds a doubly-robust causal audit with E-value sensitivity screening.
+
+Table~\ref{tab:causal} compares the SHAP direction (sign of $\text{corr}(x_j, \phi_j)$ on the held-out set) against the AIPW-adjusted risk difference. Directions agree for all five primary features. However, \textbf{SHAP alone cannot quantify confounding robustness}: four associations are FRAGILE and one is UNCERTAIN, with zero ROBUST. SHAP direction carries no information on confounding robustness.
+
+\textbf{What SHAP misses:} The E-value for metformin is 1.12, meaning an unmeasured confounder with a risk-ratio association of just 1.12 with both metformin and readmission could fully explain the observed association. A naive system that reports metformin as ``lowers readmission risk'' provides actionable-sounding guidance built on a near-zero-robustness estimate.
+
+\subsection{Recourse Gate Unit Test}
+
+To verify the gate behaviour, we ran two scenarios programmatically. \textbf{Scenario A (author-defined policy):} historical utilization features (\texttt{number\_inpatient}, \texttt{number\_emergency}) are blocked as non-modifiable; medication features are marked \emph{conditional}. No feature passes. \textbf{Scenario B (counterfactual policy, medications allowed):} medication features are relabelled as allowed. Still no feature passes, because all medication features are FRAGILE ($E \leq 2$) and the gate requires ROBUST ($E > 3$). Under both policies, every screened patient receives \texttt{no\_validated\_recourse}. The sentence ``not empty by construction'' has been removed; the gate correctly withholds everything on this dataset.
 
 % ══════════════════════════════════════════════════════════════════════════════
 % VI. DISCUSSION
 % ══════════════════════════════════════════════════════════════════════════════
 \section{Discussion}
 
-\subsection{Clinical Significance}
-The finding that 70\% of top SHAP features are causally fragile has profound implications. Standard XAI pipelines --- the current industry practice --- surface these features as ``reasons'' for predictions and may recommend interventions based on them. CausalShield intercepts this pipeline and flags confounded features \textit{before} they reach clinicians.
+\subsection{Prediction Performance in Context}
+The held-out AUC-ROC of 0.664 is modest. The dataset lacks clinical notes, real-time vitals, imaging, and social determinants of health, which limits the information available to any model. The near-zero recall at a 0.5 threshold highlights the importance of threshold selection in class-imbalanced clinical settings.
 
-The insulin sign reversal (SHAP: $+0.124$; CATE: $-0.021$) is the most clinically significant result. The model's single most important feature for prediction is \textit{anti-causal}: it correctly uses insulin status as an informative predictor (sicker patients are readmitted more), but this must \textit{never} be interpreted as ``insulin causes readmission.''
+\subsection{Interpreting the Causal Audit}
+The AIPW results should be interpreted as an observational sensitivity analysis, not as causal treatment-effect estimates. Several factors limit causal interpretation:
+\begin{itemize}[leftmargin=*, nosep]
+    \item \textbf{Measured-confounding assumption:} The confounder set includes baseline utilization counts, demographics, and diagnosis-group indicators. Unmeasured severity (HbA1c values, BMI, comorbidity indices, physician judgment) likely biases estimates. The E-values quantify but cannot eliminate this risk.
+    \item \textbf{Timing:} Medication flags and diagnosis-group indicators lack precise clinical timestamps in this administrative extract. They are treated as pre-outcome exposures, which may not hold for all encounters.
+    \item \textbf{Positivity:} Several raw propensity distributions have poor support. We restrict each feature's estimand to encounters with $0.10 < \hat e < 0.90$; this substantially reduces the retained sample for \texttt{number\_emergency} (38.8\% retained).
+    \item \textbf{Binarisation:} Continuous features are dichotomised at the median, which may obscure non-linear dose-response relationships.
+    \item \textbf{No multiplicity correction:} Five exposures are tested. We apply Benjamini--Hochberg FDR correction (reported as BH q-values); results remain significant at q < 0.05 for four features. E-value thresholds (2 and 3) are conventional, not data-driven.
+\end{itemize}
+The code documentation correctly labels these estimates as ``exploratory observational exposure audits'' and states they are ``not intervention recommendations.''
 
-\subsection{SHAP Tells You WHAT; CausalShield Tells You WHETHER}
-SHAP answers: ``\textit{What does the model rely on?}'' CausalShield answers: ``\textit{Should you trust what the model relies on?}'' This distinction is critical in healthcare, where acting on correlational explanations can directly harm patients.
+\subsection{Why Recourse Was Not Generated}
+The decision not to generate counterfactual recommendations is itself a contribution. Many clinical AI systems produce ``what-if'' scenarios without validating whether the suggested changes are (a)~clinically feasible, (b)~causally sound, or (c)~safe. Our deliberate omission demonstrates that responsible AI development sometimes means acknowledging the limits of available data and methodology.
 
-\subsection{Dashboard Design}
-Following Bienefeld et al.~\cite{bienefeld2023solving}, the Streamlit dashboard provides a six-step assessment: (1)~Risk score, (2)~What the AI sees, (3)~Which reasons are misleading, (4)~True causal drivers, (5)~``What If'' scenarios, and (6)~Final recommendation. This mirrors clinical reasoning patterns.
+\subsection{Subgroup Performance Disparities}
+The declining AUC for older age groups (0.765 for ages 10--20 vs. 0.585 for ages 90--100) suggests that the model's feature set captures readmission risk factors better for younger patients. This may reflect the greater homogeneity of readmission causes in younger diabetic patients versus the multi-morbidity complexity in elderly populations.
 
 % ══════════════════════════════════════════════════════════════════════════════
 % VII. LIMITATIONS
@@ -823,12 +805,14 @@ Following Bienefeld et al.~\cite{bienefeld2023solving}, the Streamlit dashboard 
 \section{Limitations}
 
 \begin{enumerate}[leftmargin=*, label=\textbf{L\arabic*.}]
-    \item \textbf{Unverifiable unconfoundedness:} DoubleML requires all major confounders to be measured. Unmeasured factors (physician judgment, patient adherence, social determinants) may bias estimates. E-values quantify but cannot eliminate this risk.
-    \item \textbf{Population-level CATE:} Estimates are subgroup averages, not individual effects. Biological heterogeneity within subgroups limits individual-level precision.
-    \item \textbf{Feature independence:} Counterfactuals assume features change independently. In reality, medical features cascade (e.g., discharge disposition affects follow-up care, medication access, and LOS).
-    \item \textbf{Administrative data:} The UCI dataset lacks clinical notes, imaging, vitals, and social determinants, limiting prediction and audit quality.
-    \item \textbf{Binary treatment:} Binarizing continuous features (e.g., lab counts at the median) may lose dose-response nuance.
-    \item \textbf{Generalizability:} E-value thresholds and classifications are dataset-specific; recalibration is needed for other clinical settings or populations.
+    \item \textbf{Unverifiable unconfoundedness:} The AIPW estimator requires all major confounders to be measured. Unmeasured factors (physician judgment, patient adherence, social determinants) may bias estimates. E-values quantify but cannot eliminate this risk.
+    \item \textbf{Single dataset, historical period (1999--2008):} Results are specific to the UCI Diabetes 130-US Hospitals dataset. There is no hospital identifier for cluster adjustment at the facility level, and the cohort predates modern diabetes management. Generalisability is limited.
+    \item \textbf{Author-defined actionability policy:} The actionability gate is operationalised by the authors, not by clinicians or patients. A different policy could allow different features and change which recourse recommendations, if any, are emitted.
+    \item \textbf{Administrative data:} The dataset lacks clinical notes, imaging, vitals, and social determinants, limiting both prediction quality and causal inference validity.
+    \item \textbf{Binary exposure:} Continuous features are binarised at the median, losing dose-response nuance.
+    \item \textbf{Modest discrimination:} AUC of 0.664 limits the clinical utility of the prediction model itself.
+    \item \textbf{No actionable recourse generated:} No feature was both actionability-approved and ROBUST. While this is a safety feature, it means the pipeline does not currently produce actionable ``what-if'' scenarios.
+    \item \textbf{Restricted overlap populations:} Common-support trimming changes the target population and can leave small audit samples, as seen for \texttt{number\_emergency} (38.8\% retained).
 \end{enumerate}
 
 % ══════════════════════════════════════════════════════════════════════════════
@@ -837,14 +821,13 @@ Following Bienefeld et al.~\cite{bienefeld2023solving}, the Streamlit dashboard 
 \section{Future Work}
 
 \begin{enumerate}[leftmargin=*, nosep, label=\textbf{F\arabic*.}]
-    \item \textbf{NLP integration:} BERT-based extraction from discharge summaries for richer features.
-    \item \textbf{Prospective validation:} Clinical A/B testing of standard vs. causally-audited recommendations.
-    \item \textbf{Causal discovery:} PC/FCI/DirectLiNGAM algorithms to learn the causal graph from data.
-    \item \textbf{Continuous treatments:} Nonparametric dose-response causal estimation.
-    \item \textbf{Personalized effects:} X-Learner / R-Learner for individualized CATEs.
-    \item \textbf{EHR integration:} Real-time alerts via HL7 FHIR APIs.
-    \item \textbf{Multi-outcome audit:} Simultaneous causal analysis of readmission, mortality, and LOS.
-    \item \textbf{External validation:} Testing on MIMIC-III/IV for generalizability.
+    \item \textbf{Clinician actionability catalogue:} Partner with domain experts to define which features are clinically modifiable and under what constraints, enabling the recourse layer to emit validated ``what-if'' scenarios.
+    \item \textbf{Interactive dashboard:} Build a Streamlit or similar interface for clinician-facing exploration of predictions, SHAP explanations, causal audit results, and recourse scenarios.
+    \item \textbf{Causal discovery:} Apply PC, FCI, or DirectLiNGAM algorithms to learn the causal graph from data, moving beyond assumed confounder sets.
+    \item \textbf{Richer data:} Integrate clinical notes (via NLP), lab values, and social determinants for stronger confounding adjustment.
+    \item \textbf{External validation:} Test on MIMIC-III/IV for generalizability.
+    \item \textbf{Continuous treatments:} Nonparametric dose-response causal estimation to move beyond binary exposure binarisation.
+    \item \textbf{Prospective evaluation:} Clinical A/B testing comparing standard vs. causally-audited explanations.
 \end{enumerate}
 
 % ══════════════════════════════════════════════════════════════════════════════
@@ -852,17 +835,16 @@ Following Bienefeld et al.~\cite{bienefeld2023solving}, the Streamlit dashboard 
 % ══════════════════════════════════════════════════════════════════════════════
 \section{Conclusion}
 
-We presented \textbf{CausalShield}, a four-layer Causal Audit Framework that transforms correlational XAI explanations into causally-validated, clinically safe recommendations. Applied to 101,766 diabetic patient encounters, the framework demonstrated that 7/10 top SHAP features are causally fragile --- their importance is driven by severity confounding, not genuine causal mechanisms.
+We presented \textbf{CausalShield}, a reproducible pipeline that pairs clinical readmission prediction with SHAP-guided causal sensitivity analysis. Applied to 99,343 diabetic patient encounters from 130 US hospitals, the pipeline demonstrates:
 
-Only discharge disposition ($E = 4.10$), HbA1c level ($E = 3.21$), and time in hospital ($E = 2.84$) survived the audit as ROBUST. Safe counterfactual recommendations using these features achieved risk reductions of 34--50 percentage points, while dangerous suggestions like ``reduce insulin'' were automatically blocked.
+\begin{itemize}[leftmargin=*, nosep]
+    \item An XGBoost classifier (selected by 5-fold patient-grouped cross-validation over five candidates) achieving AUC-ROC of 0.664 (95\% CI: 0.649--0.678) on a properly patient-grouped held-out test set, with TreeSHAP identifying \texttt{number\_inpatient} (mean $|\phi| = 0.323$) as the dominant feature.
+    \item An AIPW audit of five temporally eligible SHAP-ranked features (ICD diagnosis groups excluded as they are coded at discharge) with common-support trimming, BH-corrected p-values, post-weighting SMD, and E-value sensitivity analysis. SHAP directions agree with AIPW for all five features. Four associations are FRAGILE ($E \leq 2$); only \texttt{number\_inpatient} reaches UNCERTAIN ($E = 2.90$). No feature is ROBUST --- a gap that SHAP alone cannot reveal.
+    \item An actionability-first recourse gate that emitted no recommendation under either the author-defined or a counterfactual ``medications allowed'' policy, because no feature was both policy-approved and ROBUST, demonstrating that responsible AI must require both statistical robustness and clinical feasibility.
+    \item A held-out subgroup audit revealing substantial age-dependent variation in discrimination (AUC 0.585--0.765). Selection-rate ratios are reported at a common top-20\% operating point (threshold 0.146) and are descriptive rather than fairness conclusions.
+\end{itemize}
 
-\medskip
-\noindent\fbox{\parbox{0.95\columnwidth}{
-\centering\textit{SHAP tells you \textbf{what} the model relies on.\\CausalShield tells you \textbf{whether to trust it}.\\Without causal auditing, AI explanations can be\\statistically correct but clinically \textbf{deadly}.}
-}}
-\medskip
-
-By bridging the correlation--causation gap, CausalShield represents a necessary step toward trustworthy, safe, and regulatory-compliant medical AI systems.
+By integrating SHAP explanations, doubly robust causal estimation, E-value sensitivity analysis, and a constrained recourse safety gate into a single reproducible pipeline, CausalShield takes a concrete step toward trustworthy clinical AI. The key remaining challenge is partnering with clinical domain experts to define actionable feature constraints that would allow the recourse layer to emit validated ``what-if'' scenarios.
 
 % ══════════════════════════════════════════════════════════════════════════════
 % REFERENCES
@@ -904,32 +886,20 @@ V.~Chernozhukov \textit{et al.}, ``Double/debiased machine learning for treatmen
 \bibitem{chen2016xgboost}
 T.~Chen and C.~Guestrin, ``XGBoost: A scalable tree boosting system,'' in \textit{Proc. ACM SIGKDD}, 2016, pp.~785--794.
 
+\bibitem{ke2017lightgbm}
+G.~Ke \textit{et al.}, ``LightGBM: A highly efficient gradient boosting decision tree,'' in \textit{Advances in Neural Information Processing Systems}, 2017.
+
+\bibitem{friedman2001greedy}
+J.~H. Friedman, ``Greedy function approximation: A gradient boosting machine,'' \textit{Annals of Statistics}, vol.~29, no.~5, pp.~1189--1232, 2001.
+
 \bibitem{strack2014impact}
 B.~Strack \textit{et al.}, ``Impact of HbA1c measurement on hospital readmission rates: Analysis of 70,000 clinical database patient records,'' \textit{BioMed Research International}, vol.~2014, 2014.
-
-\bibitem{mothilal2020dice}
-R.~K. Mothilal, A.~Sharma, and C.~Tan, ``Explaining machine learning classifiers through diverse counterfactual explanations,'' in \textit{Proc. ACM FAccT}, 2020, pp.~607--617.
-
-\bibitem{karimi2021algorithmic}
-A.~H. Karimi, B.~Sch\"olkopf, and I.~Valera, ``Algorithmic recourse: From counterfactual explanations to interventions,'' in \textit{Proc. ACM FAccT}, 2021, pp.~353--362.
 
 \bibitem{feldman2015fairness}
 M.~Feldman \textit{et al.}, ``Certifying and removing disparate impact,'' in \textit{Proc. ACM SIGKDD}, 2015, pp.~259--268.
 
 \bibitem{pearl2009causality}
 J.~Pearl, \textit{Causality: Models, Reasoning, and Inference}, 2nd~ed.\hskip 1em Cambridge University Press, 2009.
-
-\bibitem{euaiact2024}
-European Parliament, ``Regulation (EU) 2024/1689 laying down harmonised rules on artificial intelligence (AI Act),'' \textit{Official Journal of the EU}, 2024.
-
-\bibitem{galhotra2021lewis}
-S.~Galhotra, R.~Pradhan, and B.~Salimi, ``Explaining black-box algorithms using probabilistic contrastive counterfactuals,'' in \textit{Proc. ACM SIGMOD}, 2021, pp.~577--590.
-
-\bibitem{crupi2022counterfactual}
-R.~Crupi \textit{et al.}, ``Counterfactual explanations for clinical decision support,'' \textit{J. Biomedical Informatics}, vol.~131, p.~104105, 2022.
-
-\bibitem{hernan2016target}
-M.~A. Hern\'an and J.~M.~Robins, ``Using big data to emulate a target trial when a randomized trial is not available,'' \textit{American J. Epidemiology}, vol.~183, no.~8, pp.~758--764, 2016.
 
 \end{thebibliography}
 

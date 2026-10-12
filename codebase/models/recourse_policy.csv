@@ -1,0 +1,6 @@
+feature,actionability_class,evidence_status,recourse_eligible,reason
+number_inpatient,blocked,UNCERTAIN,False,Historical utilization; cannot be changed for the current encounter.
+diabetesMed_Yes,conditional,FRAGILE,False,Medication decision requires clinician review and treatment-specific causal evidence.
+number_emergency,blocked,FRAGILE,False,Historical utilization; cannot be changed for the current encounter.
+metformin_prescribed,conditional,FRAGILE,False,Medication decision requires clinician review and treatment-specific causal evidence.
+insulin_prescribed,conditional,FRAGILE,False,Medication decision requires clinician review and treatment-specific causal evidence.

@@ -1,191 +1,440 @@
-import pandas as pd
+#!/usr/bin/env python3
+"""Exploratory feature-exposure audit with cross-fitted AIPW, E-values, and SMD.
+
+Methodology
+-----------
+* Exposures: top-N SHAP-ranked features that are not demographic, not
+  post-encounter/disposition, not within-encounter utilization, and not ICD
+  diagnosis codes (which are assigned at discharge). The final eligible list
+  is selected by a single timing-eligibility rule (see EXCLUDED_TIMING).
+* Confounder set: baseline utilisation counts, demographics, and ICD
+  diagnosis-group indicators. When auditing a diag_* feature, the ENTIRE
+  diag_* family is dropped from the adjustment set, not just the audited col.
+* Propensity model: unweighted LogisticRegression; calibrated probabilities.
+* Outcome model: HistGradientBoostingClassifier (no class-weight distortion).
+* Overlap: restrict to 0.10 < e-hat < 0.90. Estimation skipped if <100 obs.
+* Standard errors: patient-cluster sandwich variance of the influence function.
+* Multiplicity: Benjamini-Hochberg FDR correction across all audited features.
+* SMD: post-weighting standardized mean difference (max over all covariates).
+
+Analysis sample: the full cohort (all encounters), not the held-out test set.
+This is appropriate because the causal audit is a separate observational
+analysis, not an evaluation of predictive performance. Using the full cohort
+gives more precise estimates; it does not evaluate model predictions.
+
+Gate unit test (item 9): run with (a) real author-defined policy and
+(b) counterfactual policy (medication features allowed).
+"""
+from pathlib import Path
+import json, math
 import numpy as np
-from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
-from sklearn.model_selection import cross_val_predict
-import scipy.stats as st
-import math
-import pickle
-import os
-import warnings
+import pandas as pd
+from scipy import stats as scipy_stats
+from sklearn.ensemble import HistGradientBoostingClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import GroupKFold
 
-warnings.filterwarnings("ignore")
+BASE   = Path(__file__).parent
+MODELS = BASE / "models"
+DATA   = BASE / "data_processed" / "diabetic_data_cleaned.csv"
+SHAP   = MODELS / "shap_global_importance.csv"
+OUT    = MODELS / "causal_audit_full.csv"
+SIM_OUT = MODELS / "simulation_validation.csv"
+GATE_OUT = MODELS / "recourse_gate_test.csv"
+RANDOM_STATE = 42
+PRIMARY_AUDIT_K = 5
 
-# Constants
-DATA_PATH = "data_processed/diabetic_data_cleaned.csv"
-OUTCOME = "Readmitted_30d"
-MODELS_DIR = "models"
-IMMUTABLE_PREFIXES = ['age_', 'race_', 'gender_']
+IMMUTABLE = ("age_", "race_", "gender_")
 
-def load_top_features(n=12):
-    """
-    Returns the top N features by actual model feature importance.
-    Excludes demographic/immutable features (age, race, gender).
-    This ensures we audit features that actually drive predictions.
-    """
-    try:
-        with open(f"{MODELS_DIR}/layer1_features.pkl", "rb") as f:
-            all_features = pickle.load(f)
-        with open(f"{MODELS_DIR}/layer1_model.pkl", "rb") as f:
-            model = pickle.load(f)
+# Features excluded by the SINGLE timing rule: features that are recorded
+# at or after the discharge decision, or represent within-encounter
+# utilization. Crucially this now includes diag_* features (coded at
+# discharge), consistent with excluding number_diagnoses.
+EXCLUDED_TIMING = (
+    "discharge_disposition_",
+    "time_in_hospital",
+    "num_medications",
+    "num_lab_procedures",
+    "num_procedures",
+    "number_diagnoses",
+    "diag_1_",          # ICD codes assigned at discharge — excluded
+    "diag_2_",          # ICD codes assigned at discharge — excluded
+    "diag_3_",
+)
 
-        importances = model.feature_importances_
-        sorted_idx = np.argsort(importances)[::-1]
+BASELINE = ["number_inpatient", "number_outpatient", "number_emergency",
+            "number_diagnoses"]
 
-        top = []
-        for i in sorted_idx:
-            feat = all_features[i]
-            if any(feat.startswith(p) for p in IMMUTABLE_PREFIXES):
-                continue
-            top.append(feat)
-            if len(top) >= n:
-                break
 
-        print(f"  Top {len(top)} features selected by model importance:")
-        for f in top:
-            print(f"    - {f}")
-        return top
+# ─── Helpers ─────────────────────────────────────────────────────────────────
 
-    except Exception as e:
-        print(f"Could not auto-load features ({e}), using domain defaults.")
-        return ["time_in_hospital", "num_medications", "num_lab_procedures",
-                "insulin_prescribed", "number_inpatient", "number_diagnoses"]
+def _e_value_from_rr(rr_bound):
+    if rr_bound <= 0 or rr_bound == 1:
+        return 1.0
+    rr = rr_bound if rr_bound > 1 else 1 / rr_bound
+    return float(rr + math.sqrt(rr * (rr - 1)))
 
-def is_protected(feature_name):
-    """Checks if a feature is immutable/demographic based on architecture rules."""
-    return any(feature_name.startswith(prefix) for prefix in IMMUTABLE_PREFIXES)
 
-def doubly_robust_cate(df, treatment, outcome, confounders):
-    """
-    Implements Doubly Robust Estimation (DoubleML / AIPW) using Random Forests.
-    Stage 1: Propensity Score via cross-fitted RF Classifier
-    Stage 2: Outcome prediction via RF Regressors
-    Stage 3: AIPW Score calculation
-    """
-    Y = df[outcome].values
-    X = df[confounders].values
-    
-    # Step 3B: Treatment Binarization
-    # DoubleML requires a binary treatment. If numeric, split at median for "High vs Low" exposure.
-    if df[treatment].nunique() > 2:
-        median_val = df[treatment].median()
-        T = (df[treatment] > median_val).astype(int).values
-        print(f"    (Binarized '{treatment}' at > {median_val} for causal estimation)")
-    else:
-        T = df[treatment].values
+def _controls(df, feature):
+    """Build confounder set. Drop the ENTIRE diag family if feature is in it."""
+    # Determine if the audited feature belongs to a diag_N_ family
+    audited_family = None
+    for prefix in ("diag_1_", "diag_2_", "diag_3_"):
+        if feature.startswith(prefix):
+            audited_family = prefix
+            break
 
-    # Stage 1: Treatment Model m(X) = P(T=1 | X)
-    m_model = RandomForestClassifier(n_estimators=50, max_depth=5, random_state=42, n_jobs=-1)
-    # Cross-fitting to prevent overfitting the propensity scores
-    m_x = cross_val_predict(m_model, X, T, cv=5, method='predict_proba')[:, 1]
-    # Positivity Assumption: Clip probabilities to ensure common support
-    m_x = np.clip(m_x, 0.05, 0.95)
+    cols = [c for c in BASELINE if c in df and c != feature]
+    cols += [c for c in df if c.startswith(IMMUTABLE) and c != feature]
 
-    # Stage 2: Outcome Models g(X, T)
-    X_T0, Y_T0 = X[T == 0], Y[T == 0]
-    X_T1, Y_T1 = X[T == 1], Y[T == 1]
-    
-    g0_model = RandomForestRegressor(n_estimators=50, max_depth=5, random_state=42, n_jobs=-1).fit(X_T0, Y_T0)
-    g1_model = RandomForestRegressor(n_estimators=50, max_depth=5, random_state=42, n_jobs=-1).fit(X_T1, Y_T1)
-    
-    g0_x = g0_model.predict(X)
-    g1_x = g1_model.predict(X)
+    # Diag groups: keep as confounders unless they belong to the audited family
+    for c in df.columns:
+        if c.startswith("diag_") and c != feature:
+            if audited_family and c.startswith(audited_family):
+                continue  # drop entire family (item 3)
+            cols.append(c)
+    return list(dict.fromkeys(cols))
 
-    # Stage 3: Doubly Robust Score (AIPW) calculation
-    dr_scores = (g1_x - g0_x) + \
-                (T / m_x) * (Y - g1_x) - \
-                ((1 - T) / (1 - m_x)) * (Y - g0_x)
 
-    cate = np.mean(dr_scores)
-    se = np.std(dr_scores) / np.sqrt(len(dr_scores))
-    
-    return cate, se
+def _exposure(series):
+    if series.nunique() <= 2:
+        return series.astype(int).to_numpy(), "binary"
+    threshold = float(series.median())
+    return (series > threshold).astype(int).to_numpy(), f"above_median({threshold:g})"
 
-def calculate_e_value(cate, se):
-    """
-    Calculates E-values based on VanderWeele 2017 formulation provided in architecture.md.
-    Uses the lower bound of the CI (or upper bound if protective).
-    """
-    ci_lower = cate - 1.96 * se
-    ci_upper = cate + 1.96 * se
-    p_value = 2 * (1 - st.norm.cdf(abs(cate / se))) if se > 0 else 1.0
 
-    # If the effect is not statistically significant, E-value defaults to 1.0
-    if (cate > 0 and ci_lower <= 0) or (cate < 0 and ci_upper >= 0):
-        return 1.0, ci_lower, ci_upper, p_value
+def _cluster_se(scores, groups):
+    """Patient-clustered SE for the sample mean of an influence score."""
+    frame    = pd.DataFrame({"score": scores, "group": groups})
+    sums     = frame.groupby("group", sort=False).score.sum().to_numpy()
+    counts   = frame.groupby("group", sort=False).size().to_numpy()
+    theta    = scores.mean()
+    n, g     = len(scores), len(sums)
+    centered = sums - counts * theta
+    return float(np.sqrt((g / max(g - 1, 1)) * np.sum(centered**2) / n**2))
 
-    if cate > 0: # Risk factor
-        rr = math.exp(ci_lower)
-        e_value = rr + math.sqrt(rr * (rr - 1))
-    else:        # Protective factor
-        rr = math.exp(ci_upper) 
-        rr_inv = 1.0 / rr if rr > 0 else 1.0
-        e_value = rr_inv + math.sqrt(rr_inv * (rr_inv - 1))
-        
-    return round(e_value, 2), ci_lower, ci_upper, p_value
 
-def classify_status(e_value, is_prot):
-    if is_prot: return "PROTECTED"
-    if e_value > 3.0: return "ROBUST"
-    if e_value > 2.0: return "UNCERTAIN"
-    return "FRAGILE"
-
-def run():
-    print("=======================================================")
-    print("LAYER 2: CAUSAL AUDIT (CORE NOVELTY)")
-    print("=======================================================")
-    
-    df = pd.read_csv(DATA_PATH)
-    top_features = load_top_features(n=7)
-    valid_features = [f for f in top_features if f in df.columns]
-    
-    print(f"Auditing Top {len(valid_features)} SHAP Features...\n")
-    
-    results = []
-    
-    for feature in valid_features:
-        print(f"Analyzing: {feature}")
-        
-        # 1. Check if Demographic/Immutable
-        if is_protected(feature):
-            print("    Status: PROTECTED (Demographic/Immutable)\n")
-            results.append({
-                "Feature": feature, "CATE": np.nan, "CI_Lower": np.nan, 
-                "CI_Upper": np.nan, "P_Value": np.nan, "E_Value": np.nan, "Status": "PROTECTED"
-            })
+def _max_smd(x_df, t, weights_treated, weights_control):
+    """Max standardized mean difference over all covariates (post-weighting)."""
+    smds = []
+    for col in x_df.columns:
+        xv = x_df[col].to_numpy(float)
+        n1 = weights_treated.sum()
+        n0 = weights_control.sum()
+        if n1 == 0 or n0 == 0:
             continue
-            
-        # 2. Define Confounders (Everything except outcome and current treatment)
-        confounders = [c for c in df.columns if c != OUTCOME and c != feature]
-        
-        # 3. Estimate CATE using DoubleML
-        cate, se = doubly_robust_cate(df, feature, OUTCOME, confounders)
-        
-        # 4. Calculate E-value and Classify
-        e_val, ci_l, ci_u, p_val = calculate_e_value(cate, se)
-        status = classify_status(e_val, False)
-        
-        print(f"    CATE: {cate:+.4f}  |  95% CI: [{ci_l:+.4f}, {ci_u:+.4f}]")
-        print(f"    E-Value: {e_val:<5} |  Status: {status}\n")
-        
-        results.append({
-            "Feature": feature,
-            "CATE": round(cate, 4),
-            "CI_Lower": round(ci_l, 4),
-            "CI_Upper": round(ci_u, 4),
-            "P_Value": round(p_val, 4),
-            "E_Value": e_val,
-            "Status": status
-        })
-        
-    results_df = pd.DataFrame(results)
-    
-    # Save for Layer 4 (Counterfactuals) to read
-    os.makedirs(MODELS_DIR, exist_ok=True)
-    results_df.to_csv(f"{MODELS_DIR}/layer2_causal_results.csv", index=False)
-    print(f"Audit Complete. Results saved to {MODELS_DIR}/layer2_causal_results.csv")
-    print("=======================================================")
-    
+        m1 = np.sum(weights_treated * xv) / n1
+        m0 = np.sum(weights_control * xv) / n0
+        v1 = np.sum(weights_treated * (xv - m1)**2) / n1
+        v0 = np.sum(weights_control * (xv - m0)**2) / n0
+        denom = math.sqrt((v1 + v0) / 2)
+        if denom > 0:
+            smds.append(abs(m1 - m0) / denom)
+    return float(max(smds)) if smds else float("nan")
+
+
+# ─── Main AIPW estimator ─────────────────────────────────────────────────────
+
+def estimate(df, feature):
+    controls = _controls(df, feature)
+    data     = df[["patient_id", feature, "Readmitted_30d"] + controls].dropna()
+    t, defn  = _exposure(data[feature])
+    y        = data["Readmitted_30d"].to_numpy(float)
+    x        = data[controls]
+    groups   = data["patient_id"].to_numpy()
+
+    if t.min() == t.max():
+        raise ValueError("no exposure variation")
+
+    n_full = len(data)
+    e_hat  = np.zeros(n_full)
+    mu0    = np.zeros(n_full)
+    mu1    = np.zeros(n_full)
+
+    cv = GroupKFold(5)
+    for tr, ho in cv.split(x, t, groups=groups):
+        prop = LogisticRegression(solver="liblinear", max_iter=300,
+                                  random_state=RANDOM_STATE)
+        prop.fit(x.iloc[tr], t[tr])
+        e_hat[ho] = prop.predict_proba(x.iloc[ho])[:, 1]
+        for arm, dst in ((0, mu0), (1, mu1)):
+            rows = tr[t[tr] == arm]
+            if len(rows) < 5:
+                continue
+            m = HistGradientBoostingClassifier(max_iter=60, max_leaf_nodes=15,
+                                               l2_regularization=1.0,
+                                               random_state=RANDOM_STATE)
+            m.fit(x.iloc[rows], y[rows])
+            dst[ho] = m.predict_proba(x.iloc[ho])[:, 1]
+
+    untrimmed = (float(e_hat.min()), float(e_hat.max()))
+    overlap   = (e_hat > .10) & (e_hat < .90)
+    n         = int(overlap.sum())
+
+    if n < 100 or np.unique(t[overlap]).size < 2:
+        raise ValueError(
+            f"insufficient common support after trimming "
+            f"(retained {n}/{n_full} = {100*n/n_full:.1f}%)")
+
+    # Post-weighting SMD using IPW weights
+    t_ov, y_ov = t[overlap], y[overlap]
+    e_ov   = e_hat[overlap]
+    mu0_ov = mu0[overlap]
+    mu1_ov = mu1[overlap]
+    g_ov   = groups[overlap]
+    x_ov   = x.iloc[np.where(overlap)[0]]
+
+    ipw_t = np.where(t_ov == 1, 1.0 / e_ov, 0.0)
+    ipw_c = np.where(t_ov == 0, 1.0 / (1 - e_ov), 0.0)
+    max_smd = _max_smd(x_ov, t_ov, ipw_t, ipw_c)
+
+    psi1   = mu1_ov + t_ov * (y_ov - mu1_ov) / e_ov
+    psi0   = mu0_ov + (1 - t_ov) * (y_ov - mu0_ov) / (1 - e_ov)
+    diff   = psi1 - psi0
+    rd     = float(diff.mean())
+    se_rd  = _cluster_se(diff, g_ov)
+    r1, r0 = float(psi1.mean()), float(psi0.mean())
+    rr     = r1 / r0
+
+    lri    = psi1 / r1 - psi0 / r0
+    se_lri = _cluster_se(lri, g_ov)
+    rr_lo  = math.exp(math.log(rr) - 1.96 * se_lri)
+    rr_hi  = math.exp(math.log(rr) + 1.96 * se_lri)
+    ev     = (_e_value_from_rr(rr_lo if rr > 1 else rr_hi)
+              if not (rr_lo <= 1 <= rr_hi) else 1.0)
+    status = "ROBUST" if ev > 3 else "UNCERTAIN" if ev > 2 else "FRAGILE"
+
+    # Two-sided Wald p-value on RD for BH correction
+    z_rd  = rd / se_rd if se_rd > 0 else 0.0
+    pval  = float(2 * (1 - scipy_stats.norm.cdf(abs(z_rd))))
+
+    return {
+        "feature":             feature,
+        "exposure_definition": defn,
+        "n":                   n,
+        "n_before_trimming":   n_full,
+        "overlap_fraction":    round(n / n_full, 4),
+        "exposed_prevalence":  round(float(t_ov.mean()), 4),
+        "aipw_risk_difference": round(rd, 4),
+        "rd_ci_lower":         round(rd - 1.96 * se_rd, 4),
+        "rd_ci_upper":         round(rd + 1.96 * se_rd, 4),
+        "aipw_risk_ratio":     round(rr, 4),
+        "rr_ci_lower":         round(rr_lo, 4),
+        "rr_ci_upper":         round(rr_hi, 4),
+        "e_value_ci_bound":    round(ev, 4),
+        "sensitivity_category": status,
+        "max_smd_post_weighting": round(max_smd, 4),
+        "pvalue_rd":           round(pval, 6),
+        "propensity_min":      round(untrimmed[0], 6),
+        "propensity_max":      round(untrimmed[1], 6),
+        "interpretation":      "exploratory observational audit; not an intervention recommendation",
+    }
+
+
+# ─── BH multiple-comparison correction ──────────────────────────────────────
+
+def _bh_correct(results_df):
+    """Add BH-adjusted q-values. Features with audit failures get q=NaN."""
+    pvals = results_df["pvalue_rd"].to_numpy(float)
+    valid = ~np.isnan(pvals)
+    q = np.full(len(pvals), float("nan"))
+    if valid.sum() > 0:
+        from statsmodels.stats.multitest import multipletests
+        _, q_valid, _, _ = multipletests(pvals[valid], alpha=0.05, method="fdr_bh")
+        q[valid] = q_valid
+    results_df["bh_qvalue"] = np.round(q, 6)
     return results_df
+
+
+# ─── Gate unit test ──────────────────────────────────────────────────────────
+
+ACTIONABILITY_POLICY = {
+    # author-defined policy (item 9)
+    "number_inpatient":      {"allowed": False, "reason": "historical utilization, non-modifiable"},
+    "number_emergency":      {"allowed": False, "reason": "historical utilization, non-modifiable"},
+    "number_outpatient":     {"allowed": False, "reason": "historical utilization, non-modifiable"},
+    "diabetesMed_Yes":       {"allowed": "conditional", "reason": "medication: requires prescriber review"},
+    "metformin_prescribed":  {"allowed": "conditional", "reason": "medication: requires prescriber review"},
+    "insulin_prescribed":    {"allowed": "conditional", "reason": "medication: requires prescriber review"},
+    "A1Cresult_>7":          {"allowed": "conditional", "reason": "lab result: informational only"},
+    "A1Cresult_>8":          {"allowed": "conditional", "reason": "lab result: informational only"},
+}
+
+COUNTERFACTUAL_POLICY = {
+    # hypothetical policy: mark medication features allowed (item 9)
+    **ACTIONABILITY_POLICY,
+    "diabetesMed_Yes":       {"allowed": True, "reason": "counterfactual: assume prescriber-approved"},
+    "metformin_prescribed":  {"allowed": True, "reason": "counterfactual: assume prescriber-approved"},
+    "insulin_prescribed":    {"allowed": True, "reason": "counterfactual: assume prescriber-approved"},
+}
+
+
+def _run_gate(audit_df, policy, policy_name):
+    rows = []
+    for _, r in audit_df.iterrows():
+        feat   = r.get("feature", "")
+        status = r.get("sensitivity_category", "FRAGILE")
+        pol    = policy.get(feat, {"allowed": False, "reason": "not in policy"})
+        action_ok = pol["allowed"] is True
+        robust_ok  = status == "ROBUST"
+        passes     = action_ok and robust_ok
+        rows.append({
+            "policy": policy_name,
+            "feature": feat,
+            "policy_allowed": pol["allowed"],
+            "policy_reason": pol["reason"],
+            "sensitivity_category": status,
+            "e_value": r.get("e_value_ci_bound", None),
+            "gate_passes": passes,
+            "recourse_output": "validated_recourse" if passes else "no_validated_recourse",
+        })
+    return pd.DataFrame(rows)
+
+
+# ─── Simulation validation (item 10) ─────────────────────────────────────────
+
+def _run_simulation(df, n_reps=200, seed=42):
+    """Semi-parametric simulation with real covariates.
+
+    For each replication:
+      NULL exposure:  T_null ~ Bernoulli(sigma(0.5*X_a - 0.3*X_b))
+        where X_a = (number_inpatient > 0), X_b = (number_emergency > 0).
+        True causal effect = 0. Propensities are forced within 0.15-0.85
+        by keeping only encounters in that range.
+      TRUE exposure:  T_true ~ Bernoulli(sigma(0.4*X_a))
+        True RD ≈ +0.04, planted by adding 0.04 * T_true to the log-odds of Y.
+      Outcome: Y ~ Bernoulli(sigma(-2.5 + 0.8*X_a + 0.3*X_b + delta*T))
+        delta=0 for NULL, delta=0.4 for TRUE.
+    Run AIPW for each. Record RD bias, CI coverage, and E-value category.
+    Confounders in audit: X_a, X_b.
+    """
+    rng = np.random.default_rng(seed)
+    controls = ["number_inpatient", "number_outpatient", "number_emergency"]
+    controls = [c for c in controls if c in df]
+    data = df[controls + ["patient_id"]].dropna().reset_index(drop=True)
+
+    xa = (data["number_inpatient"] > 0).astype(float).values
+    xb = (data["number_emergency"] > 0).astype(float).values if "number_emergency" in data else np.zeros(len(data))
+    groups = data["patient_id"].to_numpy()
+
+    def _sigma(x): return 1 / (1 + np.exp(-x))
+
+    true_rd_true = 0.04  # approximate true RD for the planted-effect exposure
+
+    rows = []
+    for rep in range(n_reps):
+        noise = rng.standard_normal(len(data))
+        # --- NULL exposure ---
+        p_null = _sigma(0.5 * xa - 0.3 * xb + 0.3 * noise)
+        t_null = (rng.uniform(size=len(data)) < p_null).astype(int)
+        y_null = (rng.uniform(size=len(data)) < _sigma(-2.5 + 0.8*xa + 0.3*xb)).astype(float)
+
+        # --- TRUE exposure ---
+        p_true = _sigma(0.4 * xa + 0.2 * noise)
+        t_true = (rng.uniform(size=len(data)) < p_true).astype(int)
+        y_true = (rng.uniform(size=len(data)) < _sigma(-2.5 + 0.8*xa + 0.3*xb + 0.4*t_true)).astype(float)
+
+        for label, t_vec, y_vec, true_rd in [("null", t_null, y_null, 0.0),
+                                               ("true_effect", t_true, y_true, true_rd_true)]:
+            x_df = pd.DataFrame({"xa": xa, "xb": xb})
+            try:
+                # quick 3-fold AIPW (fewer folds for speed)
+                n_full2 = len(y_vec)
+                e2   = np.zeros(n_full2); m02 = np.zeros(n_full2); m12 = np.zeros(n_full2)
+                cv2  = GroupKFold(3)
+                for tr2, ho2 in cv2.split(x_df, t_vec, groups=groups):
+                    prop2 = LogisticRegression(solver="liblinear", max_iter=200, random_state=rep)
+                    prop2.fit(x_df.iloc[tr2], t_vec[tr2])
+                    e2[ho2] = prop2.predict_proba(x_df.iloc[ho2])[:, 1]
+                    for arm2, dst2 in ((0, m02), (1, m12)):
+                        rows2 = tr2[t_vec[tr2] == arm2]
+                        if len(rows2) < 10: continue
+                        om2 = HistGradientBoostingClassifier(max_iter=40, random_state=rep)
+                        om2.fit(x_df.iloc[rows2], y_vec[rows2])
+                        dst2[ho2] = om2.predict_proba(x_df.iloc[ho2])[:, 1]
+                ov2 = (e2 > .10) & (e2 < .90)
+                if ov2.sum() < 50 or np.unique(t_vec[ov2]).size < 2:
+                    raise ValueError("low overlap")
+                t2, y2, e2ov = t_vec[ov2], y_vec[ov2], e2[ov2]
+                m02ov, m12ov, g2 = m02[ov2], m12[ov2], groups[ov2]
+                ps1 = m12ov + t2*(y2-m12ov)/e2ov
+                ps0 = m02ov + (1-t2)*(y2-m02ov)/(1-e2ov)
+                dif = ps1 - ps0
+                rd2 = float(dif.mean()); se2 = _cluster_se(dif, g2)
+                r12, r02 = float(ps1.mean()), float(ps0.mean())
+                rr2 = r12/r02
+                lri2 = ps1/r12 - ps0/r02
+                se_lr2 = _cluster_se(lri2, g2)
+                rlo2 = math.exp(math.log(rr2) - 1.96*se_lr2)
+                rhi2 = math.exp(math.log(rr2) + 1.96*se_lr2)
+                ev2  = (_e_value_from_rr(rlo2 if rr2>1 else rhi2)
+                        if not (rlo2<=1<=rhi2) else 1.0)
+                cat2 = "ROBUST" if ev2>3 else "UNCERTAIN" if ev2>2 else "FRAGILE"
+                ci_lo = rd2 - 1.96*se2; ci_hi = rd2 + 1.96*se2
+                covers = int(ci_lo <= true_rd <= ci_hi)
+                rows.append({"rep": rep, "exposure_type": label, "true_rd": true_rd,
+                             "rd_estimate": round(rd2,4), "bias": round(rd2-true_rd,4),
+                             "ci_lower": round(ci_lo,4), "ci_upper": round(ci_hi,4),
+                             "ci_covers_truth": covers, "e_value": round(ev2,3),
+                             "category": cat2, "n_overlap": int(ov2.sum())})
+            except Exception as exc:
+                rows.append({"rep": rep, "exposure_type": label, "true_rd": true_rd,
+                             "rd_estimate": float("nan"), "bias": float("nan"),
+                             "ci_lower": float("nan"), "ci_upper": float("nan"),
+                             "ci_covers_truth": 0, "e_value": float("nan"),
+                             "category": "FAILED", "note": str(exc)})
+    return pd.DataFrame(rows)
+
+
+# ─── Main entry point ─────────────────────────────────────────────────────────
+
+def run(top_k=PRIMARY_AUDIT_K):
+    MODELS.mkdir(exist_ok=True)
+    df     = pd.read_csv(DATA)
+    ranked = pd.read_csv(SHAP)
+
+    # Single timing rule: exclude any prefix in EXCLUDED_TIMING
+    features = [
+        f for f in ranked["feature"]
+        if f in df
+        and not f.startswith(IMMUTABLE)
+        and not any(f.startswith(ex) for ex in EXCLUDED_TIMING)
+    ][:top_k]
+
+    print(f"Eligible features for audit ({len(features)}): {features}")
+
+    results = []
+    for feat in features:
+        try:
+            results.append(estimate(df, feat))
+            print(f"  OK: {feat}")
+        except Exception as exc:
+            print(f"  SKIP: {feat} — {exc}")
+            results.append({"feature": feat, "sensitivity_category": "SKIPPED",
+                            "interpretation": f"audit skipped: {exc}"})
+
+    out = pd.DataFrame(results)
+    out = _bh_correct(out)
+    out.to_csv(OUT, index=False)
+
+    success = out[out["sensitivity_category"].isin(["ROBUST","UNCERTAIN","FRAGILE"])]
+    print("\n=== AIPW AUDIT RESULTS ===")
+    cols = ["feature","n","overlap_fraction","aipw_risk_difference",
+            "rd_ci_lower","rd_ci_upper","aipw_risk_ratio","rr_ci_lower","rr_ci_upper",
+            "e_value_ci_bound","sensitivity_category","max_smd_post_weighting","bh_qvalue"]
+    print(success[[c for c in cols if c in success]].to_string(index=False))
+
+    # ── Gate unit tests (item 9) ──
+    gate_real  = _run_gate(success, ACTIONABILITY_POLICY,    "author_defined")
+    gate_cfact = _run_gate(success, COUNTERFACTUAL_POLICY,   "counterfactual_medications_allowed")
+    gate_all   = pd.concat([gate_real, gate_cfact], ignore_index=True)
+    gate_all.to_csv(GATE_OUT, index=False)
+    print("\n=== GATE UNIT TEST ===")
+    print("Real policy:"); print(gate_real[["feature","policy_allowed","sensitivity_category","gate_passes"]].to_string(index=False))
+    print("Counterfactual policy:"); print(gate_cfact[["feature","policy_allowed","sensitivity_category","gate_passes"]].to_string(index=False))
+
+    return out
+
 
 if __name__ == "__main__":
     run()

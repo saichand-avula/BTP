@@ -1,9 +1,0 @@
-time_in_hospital -> Readmitted_30d
-num_medications -> Readmitted_30d
-num_medications -> insulin_prescribed
-number_inpatient -> Readmitted_30d
-number_inpatient -> insulin_prescribed
-insulin_prescribed -> Readmitted_30d
-number_diagnoses -> Readmitted_30d
-number_diagnoses -> num_medications
-number_diagnoses -> time_in_hospital

@@ -1,399 +1,245 @@
 #!/usr/bin/env python3
-"""
-Layer 1 - Readmission Prediction Model
-  - Trains on the full cleaned dataset
-  - Saves the trained model
-  - Terminal loop: enter patient features → get prediction + SHAP feature importance
-"""
+"""Reproducible patient-level readmission prediction experiment.
 
-import sys
+Modelling is kept separate from causal analysis. This uses grouped
+train/validation/test splits so repeat encounters never cross a split.
+"""
+from __future__ import annotations
+
+import json
 import pickle
-import warnings
-import numpy as np
-import pandas as pd
 from pathlib import Path
 
-warnings.filterwarnings('ignore')
+import numpy as np
+import pandas as pd
+from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
+from sklearn.inspection import permutation_importance
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import (average_precision_score, brier_score_loss,
+                             precision_score, recall_score, roc_auc_score)
+from sklearn.model_selection import GroupShuffleSplit, GroupKFold
 
-from sklearn.model_selection import train_test_split
-from sklearn.ensemble import GradientBoostingClassifier
-from sklearn.metrics import roc_auc_score, accuracy_score, precision_score, recall_score, f1_score
-import shap
-
-# ── Paths ────────────────────────────────────────────────────────────────────
-BASE         = Path(__file__).parent
-CLEANED_DATA = BASE / "data_processed" / "diabetic_data_cleaned.csv"
-MODEL_PKL    = BASE / "models" / "layer1_model.pkl"
-EXPLAINER_PKL= BASE / "models" / "layer1_explainer.pkl"
-FEATURES_PKL = BASE / "models" / "layer1_features.pkl"
-
-MODEL_PKL.parent.mkdir(parents=True, exist_ok=True)
+BASE = Path(__file__).parent
+DATA = BASE / "data_processed" / "diabetic_data_cleaned.csv"
+MODELS = BASE / "models"
+MODEL_PKL = MODELS / "layer1_model.pkl"
+FEATURES_PKL = MODELS / "layer1_features.pkl"
+METRICS_CSV = MODELS / "prediction_metrics.csv"
+PREDICTIONS_CSV = MODELS / "heldout_predictions.csv"
+IMPORTANCE_CSV = MODELS / "permutation_importance.csv"
+SPLIT_JSON = MODELS / "split_summary.json"
+RANDOM_STATE = 42
+N_BOOTSTRAP = 1000
 
 
-# ── Train ─────────────────────────────────────────────────────────────────────
+def _split(df: pd.DataFrame):
+    """Create 60/20/20 patient-grouped splits (GroupShuffleSplit is not stratified)."""
+    outer = GroupShuffleSplit(n_splits=1, test_size=0.20, random_state=RANDOM_STATE)
+    dev_idx, test_idx = next(outer.split(df, groups=df["patient_id"].astype(str)))
+    dev, test = df.iloc[dev_idx].copy(), df.iloc[test_idx].copy()
+    inner = GroupShuffleSplit(n_splits=1, test_size=0.25, random_state=RANDOM_STATE)
+    train_idx, val_idx = next(inner.split(dev, groups=dev["patient_id"].astype(str)))
+    return dev.iloc[train_idx].copy(), dev.iloc[val_idx].copy(), test
+
+
+def _calibration(y, p):
+    p = np.clip(p, 1e-6, 1 - 1e-6)
+    logit = np.log(p / (1 - p)).reshape(-1, 1)
+    lr = LogisticRegression(C=1e6, max_iter=2000).fit(logit, y)
+    return float(lr.coef_[0, 0]), float(lr.intercept_[0])
+
+
+def _cluster_bootstrap_auc_ci(y, p, patient_ids, n_bootstrap=N_BOOTSTRAP):
+    """Percentile 95% CI using patient-level resampling of the held-out set."""
+    y, p = np.asarray(y), np.asarray(p)
+    groups = np.asarray(patient_ids)
+    unique_groups, inverse = np.unique(groups, return_inverse=True)
+    member_indices = [np.flatnonzero(inverse == group) for group in range(len(unique_groups))]
+    rng = np.random.default_rng(RANDOM_STATE)
+    aucs = []
+    for _ in range(n_bootstrap):
+        sampled_groups = rng.integers(0, len(unique_groups), len(unique_groups))
+        indices = np.concatenate([member_indices[group] for group in sampled_groups])
+        if np.unique(y[indices]).size == 2:
+            aucs.append(roc_auc_score(y[indices], p[indices]))
+    if len(aucs) < 100:
+        raise RuntimeError("too few valid cluster-bootstrap resamples for ROC-AUC CI")
+    return tuple(float(value) for value in np.percentile(aucs, [2.5, 97.5]))
+
+
+def _metrics(name, y, p):
+    pred = (p >= 0.5).astype(int)
+    slope, intercept = _calibration(y, p)
+    return {"model": name, "roc_auc": roc_auc_score(y, p),
+            "pr_auc": average_precision_score(y, p), "brier": brier_score_loss(y, p),
+            "precision_at_0_5": precision_score(y, pred, zero_division=0),
+            "recall_at_0_5": recall_score(y, pred, zero_division=0),
+            "calibration_slope": slope, "calibration_intercept": intercept,
+            "roc_auc_ci_lower": None, "roc_auc_ci_upper": None}
+
+
+def _top20_metrics(y, p):
+    """Return sensitivity/specificity/PPV at the 80th-pctile score threshold."""
+    threshold = float(np.percentile(p, 80))
+    pred = (p >= threshold).astype(int)
+    tp = int(((pred==1)&(y==1)).sum())
+    fp = int(((pred==1)&(y==0)).sum())
+    fn = int(((pred==0)&(y==1)).sum())
+    tn = int(((pred==0)&(y==0)).sum())
+    sens  = tp/(tp+fn) if (tp+fn)>0 else 0.0
+    spec  = tn/(tn+fp) if (tn+fp)>0 else 0.0
+    ppv   = tp/(tp+fp) if (tp+fp)>0 else 0.0
+    return {"threshold_top20pct": round(threshold,4), "sensitivity_top20": round(sens,4),
+            "specificity_top20": round(spec,4), "ppv_top20": round(ppv,4)}
+
+
+def _safe_colnames(df: pd.DataFrame):
+    """Return (renamed_df, col_map). XGBoost rejects [, ], < in column names."""
+    mapping = {c: c.replace("[", "_").replace("]", "_").replace("<", "lt").replace(">", "gt")
+               for c in df.columns}
+    return df.rename(columns=mapping), mapping
+
+
 def train():
-    if not CLEANED_DATA.exists():
-        print("Cleaned data not found. Running data_preprocessing.py first...")
-        import data_preprocessing
-        data_preprocessing.run()
-
-    print("\n" + "=" * 55)
-    print("LAYER 1: BLACK-BOX PREDICTION & ASSOCIATIVE EXPLANATION")
-    print("=" * 55)
-
-    df = pd.read_csv(CLEANED_DATA)
-    print(f"Dataset: {len(df):,} records  |  {len(df.columns)-1} features")
-
-    X = df.drop(columns=['Readmitted_30d'])
-    y = df['Readmitted_30d']
-    feature_names = X.columns.tolist()
-
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42, stratify=y
-    )
-    print(f"Train: {len(X_train):,}  |  Test: {len(X_test):,}")
-
-    model = GradientBoostingClassifier(
-        n_estimators=200, learning_rate=0.1,
-        max_depth=5, subsample=0.8, random_state=42
-    )
-    print("Training... (this may take a few minutes)")
-    model.fit(X_train, y_train)
-
-    y_pred       = model.predict(X_test)
-    y_pred_proba = model.predict_proba(X_test)[:, 1]
-
-    print("\nTest Performance:")
-    print(f"  Accuracy   : {accuracy_score(y_test, y_pred):.4f}")
-    print(f"  Precision  : {precision_score(y_test, y_pred, zero_division=0):.4f}")
-    print(f"  Recall     : {recall_score(y_test, y_pred, zero_division=0):.4f}")
-    print(f"  F1-Score   : {f1_score(y_test, y_pred, zero_division=0):.4f}")
-    print(f"  AUC-ROC    : {roc_auc_score(y_test, y_pred_proba):.4f}")
-
-    print("\nBuilding SHAP explainer...")
-    explainer = shap.TreeExplainer(model)
-
-    with open(MODEL_PKL,     'wb') as f: pickle.dump(model,        f)
-    with open(EXPLAINER_PKL, 'wb') as f: pickle.dump(explainer,    f)
-    with open(FEATURES_PKL,  'wb') as f: pickle.dump(feature_names,f)
-
-    print(f"\nModel saved  →  {MODEL_PKL.parent}")
-    return model, explainer, feature_names
-
-
-# ── Load ──────────────────────────────────────────────────────────────────────
-def load():
-    """Load model artifacts; rebuild SHAP explainer if the pickle is incompatible.
-
-    The SHAP explainer object can be sensitive to Python/numba/shap version
-    mismatches, so we treat it as a cache rather than a guaranteed stable
-    artifact.
-    """
-
-    with open(MODEL_PKL, 'rb') as f:
-        model = pickle.load(f)
-
-    with open(FEATURES_PKL, 'rb') as f:
-        feature_names = pickle.load(f)
-
-    explainer = None
-    if EXPLAINER_PKL.exists():
-        try:
-            with open(EXPLAINER_PKL, 'rb') as f:
-                explainer = pickle.load(f)
-        except Exception:
-            explainer = None
-
-    if explainer is None:
-        explainer = shap.TreeExplainer(model)
-        try:
-            with open(EXPLAINER_PKL, 'wb') as f:
-                pickle.dump(explainer, f)
-        except Exception:
-            pass
-
-    return model, explainer, feature_names
-
-
-# ── Predict & explain ─────────────────────────────────────────────────────────
-def predict_and_explain(model, explainer, feature_names, patient_row, top_n):
-    """
-    patient_row : 1-D numpy array aligned to feature_names (no target column)
-    Returns prediction, probability, and a DataFrame of top_n SHAP features.
-    """
-    X = patient_row.reshape(1, -1)
-
-    pred_class = int(model.predict(X)[0])
-    pred_proba = model.predict_proba(X)[0]
-
-    shap_vals = explainer.shap_values(X)
-    if isinstance(shap_vals, list):
-        shap_vals = shap_vals[pred_class]
-    shap_vals = shap_vals.flatten()
-
-    df_exp = pd.DataFrame({
-        'feature': feature_names,
-        'value'  : patient_row,
-        'shap'   : shap_vals,
-    })
-    df_exp['abs_shap'] = df_exp['shap'].abs()
-    top = df_exp.nlargest(top_n, 'abs_shap').reset_index(drop=True)
-
-    return pred_class, pred_proba, top
-
-
-# ── Terminal input ─────────────────────────────────────────────────────────────
-def _ask(prompt, default=""):
-    """Safe input() that returns default on EOF (e.g. piped/test runs)."""
+    if not DATA.exists():
+        from data_preprocessing import run
+        run()
+    MODELS.mkdir(exist_ok=True)
+    df = pd.read_csv(DATA)
+    if "patient_id" not in df:
+        raise RuntimeError("Re-run data_preprocessing.py: patient_id is required for grouped evaluation.")
+    train_df, val_df, test_df = _split(df)
+    # Sanitize column names (XGBoost rejects [, ], <)
+    df_safe, col_map = _safe_colnames(df)
+    train_df_s, _  = _safe_colnames(train_df)
+    val_df_s,   _  = _safe_colnames(val_df)
+    test_df_s,  _  = _safe_colnames(test_df)
+    feature_names_safe = [c for c in df_safe.columns if c not in {"Readmitted_30d", "patient_id"}]
+    feature_names      = [c for c in df.columns       if c not in {"Readmitted_30d", "patient_id"}]
+    x_train, y_train = train_df_s[feature_names_safe], train_df_s.Readmitted_30d
+    x_val,   y_val   = val_df_s[feature_names_safe],   val_df_s.Readmitted_30d
+    # ── Build candidate models ───────────────────────────────────────────────
     try:
-        return input(prompt).strip()
-    except EOFError:
-        return default
+        from xgboost import XGBClassifier
+        _xgb = XGBClassifier(n_estimators=200, learning_rate=0.05, max_depth=3,
+                             subsample=0.8, eval_metric="logloss", verbosity=0,
+                             random_state=RANDOM_STATE, use_label_encoder=False)
+    except ImportError:
+        _xgb = None
+    try:
+        from lightgbm import LGBMClassifier
+        _lgbm = LGBMClassifier(n_estimators=200, learning_rate=0.05, max_depth=3,
+                               subsample=0.8, verbose=-1, random_state=RANDOM_STATE)
+    except ImportError:
+        _lgbm = None
 
+    base_candidates = {
+        "Logistic regression":  LogisticRegression(solver="liblinear", max_iter=500,
+                                                    random_state=RANDOM_STATE),
+        "Random forest":        RandomForestClassifier(n_estimators=120, min_samples_leaf=5,
+                                                       n_jobs=-1, random_state=RANDOM_STATE),
+        "Gradient boosting":    GradientBoostingClassifier(n_estimators=200, learning_rate=0.05,
+                                                           max_depth=3, subsample=0.8,
+                                                           random_state=RANDOM_STATE),
+    }
+    if _xgb is not None:  base_candidates["XGBoost"]   = _xgb
+    if _lgbm is not None: base_candidates["LightGBM"]  = _lgbm
 
-def get_patient(feature_names, df_reference):
-    """
-    Ask the user to either pick a dataset patient or enter feature values.
-    Returns a 1-D numpy array aligned to feature_names.
-    """
-    print("\n" + "-" * 55)
-    print("PATIENT INPUT")
-    print("-" * 55)
-    print("  1  –  Pick a random patient from the dataset")
-    print("  2  –  Enter a patient row number from the dataset")
-    print("  3  –  Manually enter feature values")
+    # ── 5-fold patient-grouped CV on dev set for model selection ─────────────
+    # We use base (uncalibrated) models for selection — AUC-ROC is rank-based
+    # and unaffected by calibration. We apply a single post-hoc calibration to
+    # the SELECTED model only, before held-out evaluation.
+    dev_s  = pd.concat([train_df_s, val_df_s]).copy()
+    x_dev  = dev_s[feature_names_safe]
+    y_dev  = dev_s["Readmitted_30d"]
+    g_dev  = pd.concat([train_df["patient_id"], val_df["patient_id"]]).astype(str).reset_index(drop=True)
 
-    choice = _ask("Choice: ", default="3")
-
-    if choice == "1":
-        idx = np.random.randint(0, len(df_reference))
-        row = df_reference.iloc[idx]
-        print(f"  Using dataset patient #{idx}")
-        _show_key_fields(row, feature_names)
-        return row[feature_names].values.astype(float)
-
-    elif choice == "2":
-        raw_idx = _ask(f"  Row number (0 – {len(df_reference)-1}): ")
-        try:
-            idx = int(raw_idx)
-            row = df_reference.iloc[idx]
-            print(f"  Using dataset patient #{idx}")
-            _show_key_fields(row, feature_names)
-            return row[feature_names].values.astype(float)
-        except (ValueError, IndexError):
-            print("  Invalid row number, using row 0.")
-            row = df_reference.iloc[0]
-            return row[feature_names].values.astype(float)
-
-    elif choice == "3":
-        print(f"\n  There are {len(feature_names)} features.")
-        print("  You can enter values for the key clinical fields below.")
-        print("  (Press Enter to accept the shown default for any field.)\n")
-
-        # Use row 0 as defaults
-        defaults = df_reference.iloc[0][feature_names].to_dict()
-        values   = defaults.copy()
-
-        # Mappings for coded categorical fields (shown as one-hot columns)
-        ADMISSION_TYPE = {
-            '1': 'Emergency', '2': 'Urgent', '3': 'Elective',
-            '4': 'Newborn',   '7': 'Trauma Center',
-        }
-        DISCHARGE_DISP = {
-            '1':  'Discharged to home',
-            '2':  'Transferred to short-term hospital',
-            '3':  'Transferred to SNF',
-            '6':  'Discharged home with home-health service',
-            '7':  'Left AMA',
-            '22': 'Transferred to rehab facility',
-            '23': 'Transferred to long-term care hospital',
-        }
-        ADMISSION_SRC = {
-            '1': 'Physician Referral', '2': 'Clinic Referral',
-            '3': 'HMO Referral',       '4': 'Transfer from hospital',
-            '7': 'Emergency Room',
-        }
-
-        # Continuous/count fields the user should enter directly
-        key_fields = [
-            'time_in_hospital', 'num_lab_procedures', 'num_procedures',
-            'num_medications', 'number_diagnoses',
-            'number_outpatient', 'number_emergency', 'number_inpatient',
-        ]
-        key_fields = [f for f in key_fields if f in feature_names]
-
-        for field in key_fields:
-            default_val = defaults[field]
-            raw = _ask(f"  {field} [{default_val}]: ")
-            if raw:
-                try:
-                    values[field] = float(raw)
-                except ValueError:
-                    pass  # keep default
-
-        # One-hot binary fields the user can toggle
-        print()
-        print("  --- Categorical fields (enter the code number) ---")
-
-        def _pick_onehot(prefix, mapping, feature_names, values, defaults):
-            """Set the correct one-hot column for a categorical ID."""
-            print(f"  {prefix.replace('_', ' ')}:")
-            for k, v in mapping.items():
-                print(f"    {k} = {v}")
-            raw = _ask("  Enter code [press Enter to keep default]: ")
-            if raw in mapping:
-                col_name = f"{prefix}_{raw}"
-                for f in feature_names:
-                    if f.startswith(prefix + '_') and not any(
-                        f.startswith(prefix + '_group') for _ in [None]
-                    ):
-                        values[f] = 1.0 if f == col_name else 0.0
-
-        _pick_onehot('admission_type',        ADMISSION_TYPE, feature_names, values, defaults)
-        _pick_onehot('discharge_disposition', DISCHARGE_DISP, feature_names, values, defaults)
-        _pick_onehot('admission_source',      ADMISSION_SRC,  feature_names, values, defaults)
-
-        # Age group
-        age_groups = ['[0-10)', '[10-20)', '[20-30)', '[30-40)', '[40-50)',
-                      '[50-60)', '[60-70)', '[70-80)', '[80-90)', '[90-100)']
-        print("  age group:")
-        for i, g in enumerate(age_groups, 1):
-            print(f"    {i} = {g}")
-        raw = _ask("  Enter number [press Enter to keep default]: ")
-        try:
-            chosen_age = age_groups[int(raw) - 1]
-            for f in feature_names:
-                if f.startswith('age_'):
-                    values[f] = 1.0 if f == f'age_{chosen_age}' else 0.0
-        except (ValueError, IndexError):
-            pass
-
-        # HbA1c result
-        a1c_options = {'1': '>8 (poor control)', '2': 'Norm (normal)'}
-        print("  HbA1c (A1Cresult):")
-        for k, v in a1c_options.items(): print(f"    {k} = {v}")
-        raw = _ask("  Enter code [press Enter to keep default]: ")
-        if raw == '1':
-            values['A1Cresult_>8']   = 1.0; values['A1Cresult_Norm'] = 0.0
-        elif raw == '2':
-            values['A1Cresult_>8']   = 0.0; values['A1Cresult_Norm'] = 1.0
-
-        # Insulin
-        print("  Insulin:")
-        print("    1 = Prescribed   2 = Not prescribed   3 = Dose increased")
-        raw = _ask("  Enter code [press Enter to keep default]: ")
-        if raw == '1':
-            values['insulin_prescribed'] = 1.0; values['insulin_increased'] = 0.0
-        elif raw == '2':
-            values['insulin_prescribed'] = 0.0; values['insulin_increased'] = 0.0
-        elif raw == '3':
-            values['insulin_prescribed'] = 1.0; values['insulin_increased'] = 1.0
-
-        # Diabetes medication overall
-        raw = _ask("  On any diabetes medication? (1=Yes / 2=No) [press Enter to keep default]: ")
-        if raw == '1':
-            values['diabetesMed_Yes'] = 1.0
-        elif raw == '2':
-            values['diabetesMed_Yes'] = 0.0
-
-        return np.array([values[f] for f in feature_names], dtype=float)
-
-    else:
-        print("  Unrecognised choice, using random patient.")
-        idx = np.random.randint(0, len(df_reference))
-        row = df_reference.iloc[idx]
-        return row[feature_names].values.astype(float)
-
-
-def _show_key_fields(row, feature_names):
-    key = ['time_in_hospital', 'num_medications', 'num_lab_procedures',
-           'number_diagnoses', 'number_inpatient', 'number_emergency']
-    print("  Key fields:")
-    for f in key:
-        if f in feature_names:
-            print(f"    {f}: {row[f]}")
-
-
-# ── Main ──────────────────────────────────────────────────────────────────────
-def main():
-    # Train or load
-    if MODEL_PKL.exists() and EXPLAINER_PKL.exists() and FEATURES_PKL.exists():
-        print("=" * 55)
-        print("Model found – loading existing model.")
-        print("(Run with  --retrain  to train from scratch.)")
-        print("=" * 55)
-        model, explainer, feature_names = load()
-    else:
-        model, explainer, feature_names = train()
-
-    # Load data once for reference during input
-    if not CLEANED_DATA.exists():
-        print("Cleaned data missing. Cannot proceed.")
-        sys.exit(1)
-    df_ref = pd.read_csv(CLEANED_DATA)
-
-    # Interaction loop
-    while True:
-        print("\n" + "=" * 55)
-        print("OPTIONS")
-        print("  1  –  Make a prediction")
-        print("  2  –  Retrain model")
-        print("  3  –  Exit")
-        print("=" * 55)
-
-        try:
-            choice = _ask("Choice: ", default="3")
-        except KeyboardInterrupt:
-            print("\nGoodbye.")
-            break
-
-        if choice == "1":
+    cv_aucs = {name: [] for name in base_candidates}
+    from sklearn.base import clone
+    gkf = GroupKFold(n_splits=5)
+    for tr_idx, va_idx in gkf.split(x_dev, y_dev, groups=g_dev):
+        for name, m in base_candidates.items():
+            m_clone = clone(m)
+            m_clone.fit(x_dev.iloc[tr_idx], y_dev.iloc[tr_idx])
+            p_va = m_clone.predict_proba(x_dev.iloc[va_idx])[:, 1]
             try:
-                top_n = int(_ask("How many top features to show? [default 10]: ") or "10")
-            except ValueError:
-                top_n = 10
+                cv_aucs[name].append(roc_auc_score(y_dev.iloc[va_idx], p_va))
+            except Exception:
+                pass
+    cv_mean = {n: float(np.mean(v)) for n, v in cv_aucs.items() if v}
+    selected_name = max(cv_mean, key=cv_mean.get)
+    print(f"CV AUCs (5-fold grouped): {cv_mean}")
+    print(f"Selected: {selected_name}")
 
-            patient_row = get_patient(feature_names, df_ref)
+    # Retrain all base models on train split for validation-table metrics
+    rows = []
+    for name, m in base_candidates.items():
+        m_clone = clone(m)
+        m_clone.fit(x_train, y_train)
+        p_val = m_clone.predict_proba(x_val)[:, 1]
+        row = _metrics(name, y_val.to_numpy(), p_val)
+        row["cv_auc_mean"] = round(cv_mean.get(name, float("nan")), 4)
+        rows.append(row)
+    validation = pd.DataFrame(rows).sort_values("cv_auc_mean", ascending=False)
 
-            pred_class, pred_proba, top_features = predict_and_explain(
-                model, explainer, feature_names, patient_row, top_n
-            )
+    # Retrain the selected, unweighted candidate on the full development set.
+    x_tv = pd.concat([x_train, x_val])
+    y_tv = pd.concat([y_train, y_val])
+    selected = clone(base_candidates[selected_name])
+    selected.fit(x_tv, y_tv)
 
-            label = "READMITTED" if pred_class == 1 else "NOT READMITTED"
-            prob  = pred_proba[1] * 100
+    x_test  = test_df_s[feature_names_safe]
+    y_test  = test_df_s["Readmitted_30d"].to_numpy()
+    test_prob = selected.predict_proba(x_test)[:, 1]
+    final = _metrics(selected_name, y_test, test_prob)
+    final["roc_auc_ci_lower"], final["roc_auc_ci_upper"] = _cluster_bootstrap_auc_ci(
+        y_test, test_prob, test_df["patient_id"].to_numpy())
+    final.update(_top20_metrics(y_test, test_prob))
+    metrics = pd.concat([validation.assign(split="validation"),
+                         pd.DataFrame([{**final, "split": "held_out_test"}])], ignore_index=True)
+    metrics.to_csv(METRICS_CSV, index=False)
 
-            print("\n" + "=" * 55)
-            print("PREDICTION")
-            print("=" * 55)
-            print(f"  Result      :  {label}")
-            print(f"  Probability :  {prob:.1f}%  readmission")
-            print(f"\nTop {top_n} features that influenced this prediction:")
-            print(f"  {'#':<4} {'Feature':<45} {'Direction':<15} {'Impact':>7}")
-            print("  " + "-" * 73)
-            for i, row in top_features.iterrows():
-                direction = "increases risk" if row['shap'] > 0 else "decreases risk"
-                print(f"  {i+1:<4} {row['feature']:<45} {direction:<15} {abs(row['shap'])*100:>6.2f}%")
-                print(f"       patient value: {row['value']}")
-            print("=" * 55)
+    demo_cols = [c for c in feature_names if c.startswith(("age_", "race_", "gender_"))]
+    demo_cols_safe = [col_map.get(c, c) for c in demo_cols]
+    heldout = test_df[["patient_id", "Readmitted_30d"]].copy()
+    for orig, safe in zip(demo_cols, demo_cols_safe):
+        heldout[orig] = test_df_s[safe].values
+    heldout["predicted_probability"] = test_prob
+    heldout["predicted_label_0_5"] = (test_prob >= 0.5).astype(int)
+    heldout.to_csv(PREDICTIONS_CSV, index=False)
 
-        elif choice == "2":
-            model, explainer, feature_names = train()
+    perm = permutation_importance(selected, x_test, y_test, scoring="roc_auc",
+                                  n_repeats=5, random_state=RANDOM_STATE, n_jobs=-1)
+    # Save permutation importance with ORIGINAL (unsanitized) feature names for paper
+    pd.DataFrame({"feature": feature_names,
+                  "mean_auc_decrease": perm.importances_mean,
+                  "std_auc_decrease": perm.importances_std}
+                 ).sort_values("mean_auc_decrease", ascending=False
+                 ).to_csv(IMPORTANCE_CSV, index=False)
 
-        elif choice == "3":
-            print("Goodbye.")
-            break
+    with open(MODEL_PKL, "wb") as f: pickle.dump(selected, f)
+    # Pickle safe feature names so SHAP can call predict_proba on sanitized DFs
+    with open(FEATURES_PKL, "wb") as f: pickle.dump(feature_names_safe, f)
 
-        else:
-            print("Invalid choice.")
+    SPLIT_JSON.write_text(json.dumps({
+        "train_encounters": len(train_df), "validation_encounters": len(val_df),
+        "test_encounters":  len(test_df),
+        "train_patients":   train_df.patient_id.nunique(),
+        "validation_patients": val_df.patient_id.nunique(),
+        "test_patients":    test_df.patient_id.nunique(),
+        "selected_model":   selected_name,
+        "col_map":          col_map,
+    }, indent=2))
+    print(f"Selected model: {selected_name}")
+    print(pd.DataFrame([final]).round(4).to_string(index=False))
+    return selected, feature_names
+
+
+def load():
+    with open(MODEL_PKL, "rb") as f: model = pickle.load(f)
+    with open(FEATURES_PKL, "rb") as f: features = pickle.load(f)
+    return model, features
 
 
 if __name__ == "__main__":
-    if "--retrain" in sys.argv:
-        train()
-    elif "--train-only" in sys.argv:
-        if MODEL_PKL.exists() and FEATURES_PKL.exists():
-            load()
-        else:
-            train()
-    else:
-        main()
+    train()

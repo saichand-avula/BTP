@@ -1,0 +1,6 @@
+feature,exposure_definition,n,n_before_trimming,overlap_fraction,exposed_prevalence,aipw_risk_difference,rd_ci_lower,rd_ci_upper,aipw_risk_ratio,rr_ci_lower,rr_ci_upper,e_value_ci_bound,sensitivity_category,max_smd_post_weighting,pvalue_rd,propensity_min,propensity_max,interpretation,bh_qvalue
+number_inpatient,above_median(0),98593,99343,0.9925,0.3302,0.0723,0.0671,0.0775,1.8199,1.7504,1.8921,2.8965,UNCERTAIN,0.015,0.0,0.064945,1.0,exploratory observational audit; not an intervention recommendation,0.0
+diabetesMed_Yes,binary,98926,99343,0.9958,0.7719,0.0139,0.0091,0.0186,1.1349,1.0852,1.1868,1.3891,FRAGILE,0.0119,0.0,0.550435,0.999435,exploratory observational audit; not an intervention recommendation,0.0
+number_emergency,above_median(0),38513,99343,0.3877,0.1913,0.0213,0.0104,0.0321,1.151,1.0746,1.2328,1.3576,FRAGILE,0.0518,0.000127,0.015519,0.997851,exploratory observational audit; not an intervention recommendation,0.000159
+metformin_prescribed,binary,91436,99343,0.9204,0.2101,-0.0065,-0.0118,-0.0013,0.9404,0.8943,0.9889,1.1177,FRAGILE,0.0172,0.014611,0.003663,0.83683,exploratory observational audit; not an intervention recommendation,0.014611
+insulin_prescribed,binary,99160,99343,0.9982,0.5326,0.0129,0.0088,0.0171,1.1204,1.08,1.1624,1.3739,FRAGILE,0.0093,0.0,0.223997,0.983517,exploratory observational audit; not an intervention recommendation,0.0

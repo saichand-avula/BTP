@@ -1,0 +1,11 @@
+policy,feature,policy_allowed,policy_reason,sensitivity_category,e_value,gate_passes,recourse_output
+author_defined,number_inpatient,False,"historical utilization, non-modifiable",UNCERTAIN,2.8965,False,no_validated_recourse
+author_defined,diabetesMed_Yes,conditional,medication: requires prescriber review,FRAGILE,1.3891,False,no_validated_recourse
+author_defined,number_emergency,False,"historical utilization, non-modifiable",FRAGILE,1.3576,False,no_validated_recourse
+author_defined,metformin_prescribed,conditional,medication: requires prescriber review,FRAGILE,1.1177,False,no_validated_recourse
+author_defined,insulin_prescribed,conditional,medication: requires prescriber review,FRAGILE,1.3739,False,no_validated_recourse
+counterfactual_medications_allowed,number_inpatient,False,"historical utilization, non-modifiable",UNCERTAIN,2.8965,False,no_validated_recourse
+counterfactual_medications_allowed,diabetesMed_Yes,True,counterfactual: assume prescriber-approved,FRAGILE,1.3891,False,no_validated_recourse
+counterfactual_medications_allowed,number_emergency,False,"historical utilization, non-modifiable",FRAGILE,1.3576,False,no_validated_recourse
+counterfactual_medications_allowed,metformin_prescribed,True,counterfactual: assume prescriber-approved,FRAGILE,1.1177,False,no_validated_recourse
+counterfactual_medications_allowed,insulin_prescribed,True,counterfactual: assume prescriber-approved,FRAGILE,1.3739,False,no_validated_recourse

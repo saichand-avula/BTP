@@ -1,0 +1,16 @@
+feature,feature_value,shap_value,abs_shap
+number_inpatient,9,1.8827981,1.8827981
+diag_2_group_Neoplasms,1,0.50281906,0.50281906
+diag_3_group_Neoplasms,1,0.21143074,0.21143074
+diag_1_group_Other,1,0.06569354,0.06569354
+metformin_prescribed,1,-0.04337218,0.04337218
+glipizide_prescribed,1,0.031310216,0.031310216
+insulin_prescribed,1,0.025680674,0.025680674
+number_diagnoses,9,0.025025086,0.025025086
+time_in_hospital,2,0.023471333,0.023471333
+number_emergency,0,-0.023231091,0.023231091
+diabetesMed_Yes,1,0.01999688,0.01999688
+discharge_disposition_22,0,-0.019654714,0.019654714
+num_lab_procedures,2,-0.019021431,0.019021431
+number_outpatient,0,-0.018789763,0.018789763
+age_[80-90),1,-0.017572759,0.017572759
