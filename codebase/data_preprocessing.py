@@ -61,12 +61,12 @@ def run():
     # ── Remove deaths / hospice ──────────────────────────────────
     before = len(df)
     df = df[~df['discharge_disposition_id'].isin(DISCHARGE_EXCLUDE)].copy()
-    print(f"\nRemoved {before - len(df):,} death/hospice records → {len(df):,} remain")
+    print(f"\nRemoved {before - len(df):,} death/hospice records -> {len(df):,} remain")
 
     # ── Target variable ──────────────────────────────────────────
     df['Readmitted_30d'] = (df['readmitted'] == '<30').astype(int)
     pos = df['Readmitted_30d'].sum()
-    print(f"\nTarget  →  Readmitted <30d: {pos:,} ({pos/len(df)*100:.1f}%)  |  Not: {len(df)-pos:,}")
+    print(f"\nTarget -> Readmitted <30d: {pos:,} ({pos/len(df)*100:.1f}%)  |  Not: {len(df)-pos:,}")
 
     # ── Drop useless columns ─────────────────────────────────────
     # Keep a non-model patient key solely for grouped evaluation.  It is removed
@@ -113,7 +113,7 @@ def run():
     OUT_FILE.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(OUT_FILE, index=False)
 
-    print(f"\nSaved cleaned data → {OUT_FILE}")
+    print(f"\nSaved cleaned data -> {OUT_FILE}")
     print(f"  {len(df):,} records  |  {len(df.columns) - 1} features  |  1 target")
     print("\nPreprocessing complete. Run layer1.py next.")
 

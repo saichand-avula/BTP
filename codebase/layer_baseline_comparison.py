@@ -106,7 +106,7 @@ def run():
     n_agree   = int(out.directions_agree.sum())
     n_fragile = int((out.sensitivity_category == "FRAGILE").sum())
     print(f"\nDirection agreement: {n_agree}/{len(out)} features")
-    print(f"FRAGILE associations: {n_fragile}/{len(out)} — SHAP alone cannot quantify fragility")
+    print(f"FRAGILE associations: {n_fragile}/{len(out)} -- SHAP alone cannot quantify fragility")
     print(f"\nKey finding: Directions agree for all {n_agree} features.")
     print(f"But SHAP provides no robustness quantification: {n_fragile}/{len(out)}")
     print(f"associations are FRAGILE (E<=2). AIPW adds the E-value that SHAP cannot.")

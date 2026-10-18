@@ -39,6 +39,7 @@ MODELS = BASE / "models"
 DATA   = BASE / "data_processed" / "diabetic_data_cleaned.csv"
 SHAP   = MODELS / "shap_global_importance.csv"
 OUT    = MODELS / "causal_audit_full.csv"
+OUT_SENS = MODELS / "causal_audit_sensitivity_no_diag.csv"
 SIM_OUT = MODELS / "simulation_validation.csv"
 GATE_OUT = MODELS / "recourse_gate_test.csv"
 RANDOM_STATE = 42
@@ -75,8 +76,16 @@ def _e_value_from_rr(rr_bound):
     return float(rr + math.sqrt(rr * (rr - 1)))
 
 
-def _controls(df, feature):
-    """Build confounder set. Drop the ENTIRE diag family if feature is in it."""
+def _controls(df, feature, exclude_diag=False):
+    """Build confounder set. Drop the ENTIRE diag family if feature is in it.
+
+    Parameters
+    ----------
+    exclude_diag : bool
+        If True, exclude ALL diagnosis-group indicators from the confounder
+        set. Used for sensitivity analysis (ICD codes are assigned at
+        discharge and may introduce post-treatment bias).
+    """
     # Determine if the audited feature belongs to a diag_N_ family
     audited_family = None
     for prefix in ("diag_1_", "diag_2_", "diag_3_"):
@@ -87,12 +96,13 @@ def _controls(df, feature):
     cols = [c for c in BASELINE if c in df and c != feature]
     cols += [c for c in df if c.startswith(IMMUTABLE) and c != feature]
 
-    # Diag groups: keep as confounders unless they belong to the audited family
-    for c in df.columns:
-        if c.startswith("diag_") and c != feature:
-            if audited_family and c.startswith(audited_family):
-                continue  # drop entire family (item 3)
-            cols.append(c)
+    if not exclude_diag:
+        # Diag groups: keep as confounders unless they belong to the audited family
+        for c in df.columns:
+            if c.startswith("diag_") and c != feature:
+                if audited_family and c.startswith(audited_family):
+                    continue  # drop entire family (item 3)
+                cols.append(c)
     return list(dict.fromkeys(cols))
 
 
@@ -135,8 +145,8 @@ def _max_smd(x_df, t, weights_treated, weights_control):
 
 # ─── Main AIPW estimator ─────────────────────────────────────────────────────
 
-def estimate(df, feature):
-    controls = _controls(df, feature)
+def estimate(df, feature, exclude_diag=False):
+    controls = _controls(df, feature, exclude_diag=exclude_diag)
     data     = df[["patient_id", feature, "Readmitted_30d"] + controls].dropna()
     t, defn  = _exposure(data[feature])
     y        = data["Readmitted_30d"].to_numpy(float)
@@ -409,7 +419,7 @@ def run(top_k=PRIMARY_AUDIT_K):
             results.append(estimate(df, feat))
             print(f"  OK: {feat}")
         except Exception as exc:
-            print(f"  SKIP: {feat} — {exc}")
+            print(f"  SKIP: {feat} -- {exc}")
             results.append({"feature": feat, "sensitivity_category": "SKIPPED",
                             "interpretation": f"audit skipped: {exc}"})
 
@@ -432,6 +442,24 @@ def run(top_k=PRIMARY_AUDIT_K):
     print("\n=== GATE UNIT TEST ===")
     print("Real policy:"); print(gate_real[["feature","policy_allowed","sensitivity_category","gate_passes"]].to_string(index=False))
     print("Counterfactual policy:"); print(gate_cfact[["feature","policy_allowed","sensitivity_category","gate_passes"]].to_string(index=False))
+
+    # ── Sensitivity analysis: exclude diagnosis-group confounders ──
+    print("\n=== SENSITIVITY: AIPW without diagnosis-group confounders ===")
+    sens_results = []
+    for feat in features:
+        try:
+            sens_results.append(estimate(df, feat, exclude_diag=True))
+            print(f"  OK: {feat}")
+        except Exception as exc:
+            print(f"  SKIP: {feat} -- {exc}")
+            sens_results.append({"feature": feat, "sensitivity_category": "SKIPPED",
+                                "interpretation": f"sensitivity audit skipped: {exc}"})
+    sens_df = pd.DataFrame(sens_results)
+    sens_df = _bh_correct(sens_df)
+    sens_df.to_csv(OUT_SENS, index=False)
+    sens_ok = sens_df[sens_df["sensitivity_category"].isin(["ROBUST","UNCERTAIN","FRAGILE"])]
+    if len(sens_ok):
+        print(sens_ok[[c for c in cols if c in sens_ok]].to_string(index=False))
 
     return out
 

@@ -8,6 +8,8 @@ import layer1
 import layer1_shap
 import layer2_causal
 import layer3_counterfactual
+import layer_baseline_comparison
+import layer_semisynthetic
 
 
 def run_all():
@@ -17,6 +19,8 @@ def run_all():
     causal  = layer2_causal.run()
     fairness = aux_fairness.run()
     recourse = layer3_counterfactual.run()
+    baseline = layer_baseline_comparison.run()
+    validation = layer_semisynthetic.run()
     print("\nCompleted. Results are in codebase/models/.")
     return causal, fairness, recourse
 

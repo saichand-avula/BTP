@@ -173,15 +173,15 @@ def experiment_a(df: pd.DataFrame, rng: np.random.Generator) -> dict:
     z_shap = round(float(imp["Z_noisy_proxy"]), 4)
 
     verdict = (
-        "PASS — positivity violation correctly identified (estimation blocked)"
+        "PASS -- positivity violation correctly identified (estimation blocked)"
         if aipw["status"] == "POSITIVITY_VIOLATION" else
-        "PASS — CI includes zero: zero-effect proxy correctly non-significant"
+        "PASS -- CI includes zero: zero-effect proxy correctly non-significant"
         if aipw.get("ci_includes_zero") else
-        "PASS — FRAGILE: zero-effect proxy correctly classified as non-robust"
+        "PASS -- FRAGILE: zero-effect proxy correctly classified as non-robust"
         if aipw.get("sensitivity_category") == "FRAGILE" else
-        "PARTIAL — UNCERTAIN: residual confounding remaining after adjustment"
+        "PARTIAL -- UNCERTAIN: residual confounding remaining after adjustment"
         if aipw.get("sensitivity_category") == "UNCERTAIN" else
-        "WARN — ROBUST classification on a zero-effect proxy"
+        "WARN -- ROBUST classification on a zero-effect proxy"
     )
 
     row = {"experiment": "A_noisy_severity_proxy",
