@@ -7,7 +7,7 @@ import pandas as pd
 
 BASE = Path(__file__).parent
 MODELS = BASE / "models"
-DATA = BASE / "data_processed" / "diabetic_data_cleaned.csv"
+PREDICTIONS = MODELS / "heldout_predictions.csv"
 AUDIT = MODELS / "causal_audit_full.csv"
 OUT = MODELS / "recourse_audit.csv"
 POLICY = MODELS / "recourse_policy.csv"
@@ -42,7 +42,9 @@ def run(n_cases=20):
 
     with open(MODELS / "layer1_model.pkl", "rb") as f: model = pickle.load(f)
     with open(MODELS / "layer1_features.pkl", "rb") as f: features = pickle.load(f)
-    df = pd.read_csv(DATA)
+    # Recourse is scoped to held-out encounters only.  The prediction artefact
+    # contains the exact model features and the held-out patient rows.
+    df = pd.read_csv(PREDICTIONS)
     # Layer 1 sanitises feature names for XGBoost compatibility before fitting.
     # Apply the identical mapping before scoring here.
     safe_df = df.rename(columns={c: c.replace("[", "_").replace("]", "_")

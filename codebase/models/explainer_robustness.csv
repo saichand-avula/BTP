@@ -1,0 +1,4 @@
+reference_method,comparison_method,n_heldout_rows,top15_overlap_count,top15_overlap_fraction,spearman_mean_abs_shap,kernel_background_rows,kernel_nsamples
+TreeSHAP_path_dependent,TreeSHAP_interventional,2000,12,0.8,0.9316,,
+TreeSHAP_path_dependent,KernelSHAP,2000,12,0.8,0.897,20,256
+TreeSHAP_interventional,KernelSHAP,2000,14,0.9333,0.9594,20,256

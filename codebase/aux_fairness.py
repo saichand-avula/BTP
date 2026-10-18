@@ -34,20 +34,32 @@ def _bootstrap_di_ci(df, group_col_mask, ref_mask, alert_col, n_boot=N_BOOTSTRAP
     if len(grp_pids) < 10 or len(ref_pids) < 10:
         return float("nan"), float("nan")
 
+    # Aggregate alerts at patient level.  This preserves repeated draws and
+    # avoids repeatedly concatenating all encounter rows inside the bootstrap.
+    if "patient_id" in df.columns:
+        def patient_totals(mask):
+            summary = (df.loc[mask, ["patient_id", alert_col]]
+                         .groupby("patient_id", sort=False)[alert_col]
+                         .agg(["sum", "count"]))
+            return summary["sum"].to_numpy(float), summary["count"].to_numpy(float)
+        g_sum, g_count = patient_totals(group_col_mask)
+        r_sum, r_count = patient_totals(ref_mask)
+    else:
+        g_sum = df.loc[group_col_mask, alert_col].to_numpy(float)
+        r_sum = df.loc[ref_mask, alert_col].to_numpy(float)
+        g_count = np.ones_like(g_sum)
+        r_count = np.ones_like(r_sum)
+
     ratios = []
-    for _ in range(n_boot):
-        g_samp = rng.choice(grp_pids, len(grp_pids), replace=True)
-        r_samp = rng.choice(ref_pids, len(ref_pids), replace=True)
-        if "patient_id" in df.columns:
-            g_rows = df.loc[df["patient_id"].isin(g_samp) & group_col_mask, alert_col]
-            r_rows = df.loc[df["patient_id"].isin(r_samp) & ref_mask, alert_col]
-        else:
-            g_rows = df.loc[g_samp, alert_col]
-            r_rows = df.loc[r_samp, alert_col]
-        g_rate = g_rows.mean() if len(g_rows) > 0 else 0.0
-        r_rate = r_rows.mean() if len(r_rows) > 0 else 0.0
-        if r_rate > 0:
-            ratios.append(g_rate / r_rate)
+    # Chunking bounds memory for large reference subgroups while producing the
+    # same replacement bootstrap distribution.
+    for start in range(0, n_boot, 100):
+        size = min(100, n_boot - start)
+        g_idx = rng.integers(0, len(g_sum), size=(size, len(g_sum)))
+        r_idx = rng.integers(0, len(r_sum), size=(size, len(r_sum)))
+        g_rate = g_sum[g_idx].sum(axis=1) / g_count[g_idx].sum(axis=1)
+        r_rate = r_sum[r_idx].sum(axis=1) / r_count[r_idx].sum(axis=1)
+        ratios.extend((g_rate[r_rate > 0] / r_rate[r_rate > 0]).tolist())
     if len(ratios) < 100:
         return float("nan"), float("nan")
     return tuple(float(v) for v in np.percentile(ratios, [2.5, 97.5]))
@@ -111,13 +123,21 @@ def run():
                                                 "predicted_label_top20pct")
             else:
                 ci_lo, ci_hi = float("nan"), float("nan")
+            if np.isnan(ci_lo) or np.isnan(ci_hi):
+                flag = "inconclusive"
+            elif ci_hi < .80 or ci_lo > 1.25:
+                flag = "review"
+            elif ci_lo >= .80 and ci_hi <= 1.25:
+                flag = "within_0.80_1.25"
+            else:
+                flag = "inconclusive"
             di_rows.append({"group": group, "value": row.value, "reference": reference.value,
                             "operating_point": "top_20_percent_heldout_risk",
                             "risk_threshold": alert_threshold, "alert_rate": rate,
                             "disparate_impact_ratio": ratio,
                             "di_ci_lower": round(ci_lo, 4) if not np.isnan(ci_lo) else float("nan"),
                             "di_ci_upper": round(ci_hi, 4) if not np.isnan(ci_hi) else float("nan"),
-                            "flag": "review" if ratio < .80 or ratio > 1.25 else "within_0.80_1.25"})
+                            "flag": flag})
     pd.DataFrame(di_rows).to_csv(OUT_DI, index=False)
     print(f"Saved held-out subgroup metrics: {OUT}")
     print(f"Saved disparate impact with bootstrap CIs: {OUT_DI}")

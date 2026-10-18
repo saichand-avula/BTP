@@ -122,14 +122,14 @@ def train():
     try:
         from xgboost import XGBClassifier
         _xgb = XGBClassifier(n_estimators=200, learning_rate=0.05, max_depth=3,
-                             subsample=0.8, eval_metric="logloss", verbosity=0,
+                             subsample=0.8, n_jobs=1, eval_metric="logloss", verbosity=0,
                              random_state=RANDOM_STATE, use_label_encoder=False)
     except ImportError:
         _xgb = None
     try:
         from lightgbm import LGBMClassifier
         _lgbm = LGBMClassifier(n_estimators=200, learning_rate=0.05, max_depth=3,
-                               subsample=0.8, verbose=-1, random_state=RANDOM_STATE)
+                               subsample=0.8, n_jobs=1, verbose=-1, random_state=RANDOM_STATE)
     except ImportError:
         _lgbm = None
 
@@ -137,7 +137,7 @@ def train():
         "Logistic regression":  LogisticRegression(solver="liblinear", max_iter=500,
                                                     random_state=RANDOM_STATE),
         "Random forest":        RandomForestClassifier(n_estimators=120, min_samples_leaf=5,
-                                                       n_jobs=-1, random_state=RANDOM_STATE),
+                                                       n_jobs=1, random_state=RANDOM_STATE),
         "Gradient boosting":    GradientBoostingClassifier(n_estimators=200, learning_rate=0.05,
                                                            max_depth=3, subsample=0.8,
                                                            random_state=RANDOM_STATE),
@@ -199,11 +199,9 @@ def train():
                          pd.DataFrame([{**final, "split": "held_out_test"}])], ignore_index=True)
     metrics.to_csv(METRICS_CSV, index=False)
 
-    demo_cols = [c for c in feature_names if c.startswith(("age_", "race_", "gender_"))]
-    demo_cols_safe = [col_map.get(c, c) for c in demo_cols]
-    heldout = test_df[["patient_id", "Readmitted_30d"]].copy()
-    for orig, safe in zip(demo_cols, demo_cols_safe):
-        heldout[orig] = test_df_s[safe].values
+    # Persist the exact held-out covariate rows with their predictions.  This
+    # makes downstream subgroup and recourse analyses provably held-out-only.
+    heldout = test_df[["patient_id", "Readmitted_30d"] + feature_names].copy()
     heldout["predicted_probability"] = test_prob
     heldout["predicted_label_0_5"] = (test_prob >= 0.5).astype(int)
     heldout.to_csv(PREDICTIONS_CSV, index=False)

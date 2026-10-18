@@ -64,7 +64,7 @@ EXCLUDED_TIMING = (
 )
 
 BASELINE = ["number_inpatient", "number_outpatient", "number_emergency",
-            "number_diagnoses"]
+            ]
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -311,10 +311,12 @@ def _run_simulation(df, n_reps=200, seed=42):
         where X_a = (number_inpatient > 0), X_b = (number_emergency > 0).
         True causal effect = 0. Propensities are forced within 0.15-0.85
         by keeping only encounters in that range.
-      TRUE exposure:  T_true ~ Bernoulli(sigma(0.4*X_a))
-        True RD ≈ +0.04, planted by adding 0.04 * T_true to the log-odds of Y.
+      TRUE exposures: T ~ Bernoulli(sigma(0.4*X_a)) with two log-odds
+        shifts (delta=0.4 and delta=1.0).  Their true RDs are calculated
+        directly from each replication's potential-outcome probabilities,
+        averaged over the real covariates; they are never hard-coded.
       Outcome: Y ~ Bernoulli(sigma(-2.5 + 0.8*X_a + 0.3*X_b + delta*T))
-        delta=0 for NULL, delta=0.4 for TRUE.
+      delta=0 for NULL, delta in {0.4, 1.0} for planted effects.
     Run AIPW for each. Record RD bias, CI coverage, and E-value category.
     Confounders in audit: X_a, X_b.
     """
@@ -329,8 +331,6 @@ def _run_simulation(df, n_reps=200, seed=42):
 
     def _sigma(x): return 1 / (1 + np.exp(-x))
 
-    true_rd_true = 0.04  # approximate true RD for the planted-effect exposure
-
     rows = []
     for rep in range(n_reps):
         noise = rng.standard_normal(len(data))
@@ -339,16 +339,27 @@ def _run_simulation(df, n_reps=200, seed=42):
         t_null = (rng.uniform(size=len(data)) < p_null).astype(int)
         y_null = (rng.uniform(size=len(data)) < _sigma(-2.5 + 0.8*xa + 0.3*xb)).astype(float)
 
-        # --- TRUE exposure ---
+        # --- Planted-effect exposure assignment ---
         p_true = _sigma(0.4 * xa + 0.2 * noise)
         t_true = (rng.uniform(size=len(data)) < p_true).astype(int)
-        y_true = (rng.uniform(size=len(data)) < _sigma(-2.5 + 0.8*xa + 0.3*xb + 0.4*t_true)).astype(float)
+        linear_predictor = -2.5 + 0.8 * xa + 0.3 * xb
+        scenarios = [("null", t_null, y_null, 0.0)]
+        for delta in (0.4, 1.0):
+            # The true marginal RD is E[Y(1)-Y(0)] under this DGP, evaluated
+            # on the real covariates used in this replication.
+            true_rd = float(np.mean(_sigma(linear_predictor + delta) -
+                                    _sigma(linear_predictor)))
+            y_true = (rng.uniform(size=len(data)) <
+                      _sigma(linear_predictor + delta * t_true)).astype(float)
+            scenarios.append((f"delta_{delta:.1f}", t_true, y_true, true_rd))
 
-        for label, t_vec, y_vec, true_rd in [("null", t_null, y_null, 0.0),
-                                               ("true_effect", t_true, y_true, true_rd_true)]:
+        for label, t_vec, y_vec, true_rd in scenarios:
             x_df = pd.DataFrame({"xa": xa, "xb": xb})
             try:
-                # quick 3-fold AIPW (fewer folds for speed)
+                # Three-fold AIPW implementation check.  This known DGP is
+                # logistic in two binary covariates, so logistic nuisance
+                # models are correctly specified and avoid conflating this
+                # check with flexible-model tuning.
                 n_full2 = len(y_vec)
                 e2   = np.zeros(n_full2); m02 = np.zeros(n_full2); m12 = np.zeros(n_full2)
                 cv2  = GroupKFold(3)
@@ -359,7 +370,8 @@ def _run_simulation(df, n_reps=200, seed=42):
                     for arm2, dst2 in ((0, m02), (1, m12)):
                         rows2 = tr2[t_vec[tr2] == arm2]
                         if len(rows2) < 10: continue
-                        om2 = HistGradientBoostingClassifier(max_iter=40, random_state=rep)
+                        om2 = LogisticRegression(solver="liblinear", max_iter=200,
+                                                 random_state=rep)
                         om2.fit(x_df.iloc[rows2], y_vec[rows2])
                         dst2[ho2] = om2.predict_proba(x_df.iloc[ho2])[:, 1]
                 ov2 = (e2 > .10) & (e2 < .90)
@@ -460,6 +472,17 @@ def run(top_k=PRIMARY_AUDIT_K):
     sens_ok = sens_df[sens_df["sensitivity_category"].isin(["ROBUST","UNCERTAIN","FRAGILE"])]
     if len(sens_ok):
         print(sens_ok[[c for c in cols if c in sens_ok]].to_string(index=False))
+
+    # Simulation is an implementation check under a deliberately simple DGP,
+    # not evidence for causal validity on the observational hospital data.
+    print("\n=== SIMULATION: simple known-DGP implementation check ===")
+    simulation = _run_simulation(df)
+    simulation.to_csv(SIM_OUT, index=False)
+    # Preserve literal labels such as "null" when this artefact is reloaded.
+    simulation = pd.read_csv(SIM_OUT, keep_default_na=False)
+    print(simulation.groupby("exposure_type", dropna=False).agg(
+        reps=("rep", "size"), coverage=("ci_covers_truth", "mean"),
+        mean_bias=("bias", "mean")).round(4).to_string())
 
     return out
 

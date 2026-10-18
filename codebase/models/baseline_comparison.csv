@@ -1,6 +1,6 @@
 shap_rank,feature,mean_abs_shap,shap_direction,aipw_risk_difference,rd_ci_lower,rd_ci_upper,aipw_risk_ratio,e_value_ci_bound,sensitivity_category,directions_agree,what_aipw_adds,n,overlap_fraction
-1,number_inpatient,0.31885225,raises_risk,0.0722,0.0669,0.0774,1.8178,2.8924,UNCERTAIN,True,E-value shows UNCERTAIN robustness: moderate confounding could explain it,98592,0.9924
-6,diabetesMed_Yes,0.036012705,raises_risk,0.0136,0.0089,0.0184,1.132,1.3809,FRAGILE,True,E-value shows association is FRAGILE: unmeasured confounding could explain it,98906,0.9956
-8,number_emergency,0.030719973,raises_risk,0.0235,0.0126,0.0344,1.1668,1.4039,FRAGILE,True,E-value shows association is FRAGILE: unmeasured confounding could explain it,38517,0.3877
-10,metformin_prescribed,0.022831742,lowers_risk,-0.0063,-0.0116,-0.0011,0.9423,1.1055,FRAGILE,True,E-value shows association is FRAGILE: unmeasured confounding could explain it,91393,0.92
-12,insulin_prescribed,0.020046758,raises_risk,0.0132,0.0091,0.0174,1.1237,1.3834,FRAGILE,True,E-value shows association is FRAGILE: unmeasured confounding could explain it,99139,0.9979
+1,number_inpatient,0.3230191,raises_risk,0.0741,0.0689,0.0794,1.8453,2.9485,UNCERTAIN,True,E-value shows UNCERTAIN robustness: moderate confounding could explain it,98704,0.9936
+6,diabetesMed_Yes,0.04210028,raises_risk,0.0149,0.0102,0.0196,1.1455,1.4192,FRAGILE,True,E-value shows association is FRAGILE: unmeasured confounding could explain it,98934,0.9959
+8,number_emergency,0.029257908,raises_risk,0.0185,0.0075,0.0295,1.1325,1.2953,FRAGILE,True,E-value shows association is FRAGILE: unmeasured confounding could explain it,37595,0.3784
+10,metformin_prescribed,0.025718397,lowers_risk,-0.0072,-0.0124,-0.0019,0.9347,1.15,FRAGILE,True,E-value shows association is FRAGILE: unmeasured confounding could explain it,91532,0.9214
+13,insulin_prescribed,0.018837908,raises_risk,0.015,0.0109,0.019,1.1412,1.4332,FRAGILE,True,E-value shows association is FRAGILE: unmeasured confounding could explain it,99193,0.9985
