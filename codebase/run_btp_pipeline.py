@@ -15,7 +15,7 @@ import layer_semisynthetic
 
 BASE = Path(__file__).parent
 MODELS = BASE / "models"
-PAPER_NUMBERS = BASE / "paper_generated.tex"
+PAPER = BASE.parent / "paper.tex"
 
 
 def write_paper_numbers():
@@ -33,7 +33,7 @@ def write_paper_numbers():
     def pct(value, digits=1):
         return f"{100 * float(value):.{digits}f}"
     def macro(name, value):
-        lines.append(f"\\newcommand{{\\{name}}}{{{value}}}")
+        lines.append(f"\\newcommand{{\\{name}}}{{{value}\\xspace}}")
     def body(name, rows):
         lines.append(f"\\newcommand{{\\{name}}}{{%")
         lines.extend(rows)
@@ -91,8 +91,15 @@ def write_paper_numbers():
         counts=part.category.value_counts(); sim_rows.append(f"{esc(label)} & {f(part.true_rd.mean())} & {f(part.bias.mean(),4)} & {f(part.ci_covers_truth.mean())} & {int(counts.get('FRAGILE',0))}/{int(counts.get('UNCERTAIN',0))}/{int(counts.get('ROBUST',0))} \\\\")
     body("GeneratedSimulationRows", sim_rows)
     body("GeneratedRobustnessRows", [f"{esc(r.reference_method)} vs. {esc(r.comparison_method)} & {int(r.top15_overlap_count)}/15 & {f(r.spearman_mean_abs_shap)} & {'yes' if True else 'no'} \\\\" for _, r in robust.iterrows()])
-    PAPER_NUMBERS.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    print(f"Wrote generated paper values to {PAPER_NUMBERS}")
+    generated = "\n".join(lines) + "\n"
+    source = PAPER.read_text(encoding="utf-8")
+    begin, end = "%%BEGIN_GENERATED", "%%END_GENERATED"
+    if source.count(begin) != 1 or source.count(end) != 1:
+        raise RuntimeError("paper.tex must contain exactly one generated marker pair")
+    before, remainder = source.split(begin, 1)
+    _, after = remainder.split(end, 1)
+    PAPER.write_text(before + begin + "\n" + generated + end + after, encoding="utf-8")
+    print(f"Embedded generated paper values in {PAPER}")
 
 
 def run_all():
