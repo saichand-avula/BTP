@@ -420,17 +420,17 @@ Table~\ref{tab:validation} shows grouped-CV and validation performance for all f
 \toprule
 \textbf{Model} & \textbf{CV AUC} & \textbf{Val AUC} & \textbf{PR-AUC} & \textbf{Brier} \\
 \midrule
-\textbf{XGBoost}    & \textbf{0.671} & \textbf{0.677} & \textbf{0.239} & \textbf{0.098} \\
+\textbf{XGBoost}    & \textbf{0.670} & \textbf{0.677} & \textbf{0.238} & \textbf{0.098} \\
 LightGBM            & 0.670 & 0.677 & 0.238 & 0.098 \\
-Gradient Boosting   & 0.669 & 0.676 & 0.235 & 0.098 \\
-Logistic Regression & 0.661 & 0.666 & 0.222 & 0.099 \\
-Random Forest       & 0.665 & 0.667 & 0.229 & 0.099 \\
+Gradient Boosting   & 0.669 & 0.676 & 0.234 & 0.099 \\
+Logistic Regression & 0.661 & 0.667 & 0.223 & 0.099 \\
+Random Forest       & 0.664 & 0.667 & 0.227 & 0.099 \\
 \bottomrule
 \end{tabular}
 \label{tab:validation}
 \end{table}
 
-XGBoost achieved the highest mean CV AUC-ROC (0.671) and was selected for held-out evaluation. LightGBM and gradient boosting were close (0.670 and 0.669). All candidates used no class weighting; no causal explanation is assigned to their Brier-score differences. After retraining on train+validation, held-out test performance is reported in Table~\ref{tab:perf}.
+XGBoost achieved the highest mean grouped-CV AUC-ROC and was selected for held-out evaluation. All candidates used no class weighting; no causal explanation is assigned to their Brier-score differences. After retraining on train+validation, held-out test performance is reported in Table~\ref{tab:perf}.
 
 \begin{table}[htbp]
 \caption{Held-Out Test Performance (XGBoost, selected by 5-fold CV)}
@@ -442,13 +442,13 @@ XGBoost achieved the highest mean CV AUC-ROC (0.671) and was selected for held-o
 AUC-ROC & 0.664 (95\% CI: 0.649--0.678) \\
 PR-AUC & 0.222 \\
 Brier Score & 0.094 \\
-Precision (at 0.5) & 0.536 \\
-Recall (at 0.5) & 0.007 \\
-Calibration Slope & 1.081 \\
-Calibration Intercept & 0.134 \\
+Precision (at 0.5) & 0.538 \\
+Recall (at 0.5) & 0.006 \\
+Calibration Slope & 1.077 \\
+Calibration Intercept & 0.126 \\
 \midrule
 \multicolumn{2}{l}{\textit{Top-20\% operating point (threshold 0.146)}} \\
-Sensitivity & 0.382 \\
+Sensitivity & 0.383 \\
 Specificity & 0.823 \\
 PPV & 0.213 \\
 \bottomrule
@@ -456,7 +456,7 @@ PPV & 0.213 \\
 \label{tab:perf}
 \end{table}
 
-The held-out AUC-ROC is 0.664. The very low recall at the default 0.5 threshold reflects the class imbalance ($\sim$11\% positive rate). At the top-20\% operating point (risk threshold 0.146), the model achieves sensitivity 0.382, specificity 0.823, and PPV 0.213. The Brier score of 0.094 and calibration slope near 1.0 describe probability performance on this held-out split.
+The held-out AUC-ROC is 0.664. The very low recall at the default 0.5 threshold reflects class imbalance. At the top-20\% operating point (risk threshold 0.146), the model achieves sensitivity 0.383, specificity 0.823, and PPV 0.213. The Brier score of 0.094 and calibration slope near 1.0 describe probability performance on this held-out split.
 
 \subsection{Component~1: Feature Importance}
 
@@ -804,7 +804,7 @@ All five sensitivity categories are unchanged. Risk differences shift by at most
 
 \subsection{Constrained Recourse Audit}
 
-The recourse layer applies the author-defined actionability policy before considering sensitivity metadata. Historical utilization features are blocked; medication variables are conditional on treatment-specific evidence. None of the five audited features was both policy-approved (\texttt{allowed}) and ROBUST. Consequently, all 20 screened high-risk patients received \texttt{no\_validated\_recourse}. This is a \textit{safety output}, not an absent computation.
+The recourse component applies the author-defined actionability policy before considering sensitivity metadata. Historical utilization features are blocked; medication variables are conditional on treatment-specific evidence. None of the five audited features was both policy-approved (\texttt{allowed}) and ROBUST. Consequently, all 20 screened high-risk patients received \texttt{no\_validated\_recourse}. This is a \textit{safety output}, not an absent computation.
 
 % ── SECTION: Baseline Comparison ──────────────────────────────────────────
 \subsection{Baseline Comparison: Naive SHAP vs.\ CausalShield AIPW Audit}

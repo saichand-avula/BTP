@@ -5,13 +5,13 @@ age,[30-40),[70-80),top_20_percent_heldout_risk,0.14628188,0.22293814432989692,0
 age,[40-50),[70-80),top_20_percent_heldout_risk,0.14628188,0.16192560175054704,0.7147452877269761,0.5809,0.8552,inconclusive
 age,[50-60),[70-80),top_20_percent_heldout_risk,0.14628188,0.16387283236994218,0.7233404320048676,0.6321,0.8259,inconclusive
 age,[60-70),[70-80),top_20_percent_heldout_risk,0.14628188,0.19203957724308524,0.8476694321817587,0.7544,0.9491,inconclusive
-age,[70-80),[70-80),top_20_percent_heldout_risk,0.14628188,0.22655007949125597,1.0,,,inconclusive
+age,[70-80),[70-80),top_20_percent_heldout_risk,0.14628188,0.22655007949125597,1.0,,,reference
 age,[80-90),[70-80),top_20_percent_heldout_risk,0.14628188,0.22583586626139818,0.9968474377432944,0.896,1.1131,within_0.80_1.25
 age,[90-100),[70-80),top_20_percent_heldout_risk,0.14628188,0.18672199170124482,0.8241974230181263,0.6536,1.0023,inconclusive
 gender,Male,Female,top_20_percent_heldout_risk,0.14628188,0.19647215442644775,0.9677641626648227,0.8929,1.0524,within_0.80_1.25
-gender,Female,Female,top_20_percent_heldout_risk,0.14628188,0.20301656333857684,1.0,,,inconclusive
+gender,Female,Female,top_20_percent_heldout_risk,0.14628188,0.20301656333857684,1.0,,,reference
 race,Asian,Caucasian,top_20_percent_heldout_risk,0.14628188,0.088,0.44755125208681135,0.1678,0.7265,review
-race,Caucasian,Caucasian,top_20_percent_heldout_risk,0.14628188,0.19662552521008403,1.0,,,inconclusive
+race,Caucasian,Caucasian,top_20_percent_heldout_risk,0.14628188,0.19662552521008403,1.0,,,reference
 race,Hispanic,Caucasian,top_20_percent_heldout_risk,0.14628188,0.17473118279569894,0.8886495413502792,0.6088,1.1823,inconclusive
 race,Other,Caucasian,top_20_percent_heldout_risk,0.14628188,0.15120274914089346,0.7689884056474422,0.4894,1.0981,inconclusive
 race,AfricanAmerican,Caucasian,top_20_percent_heldout_risk,0.14628188,0.2236253617469087,1.1373160300931264,1.0307,1.2532,inconclusive

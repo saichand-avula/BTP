@@ -123,7 +123,9 @@ def run():
                                                 "predicted_label_top20pct")
             else:
                 ci_lo, ci_hi = float("nan"), float("nan")
-            if np.isnan(ci_lo) or np.isnan(ci_hi):
+            if row.value == reference.value:
+                flag = "reference"
+            elif np.isnan(ci_lo) or np.isnan(ci_hi):
                 flag = "inconclusive"
             elif ci_hi < .80 or ci_lo > 1.25:
                 flag = "review"
