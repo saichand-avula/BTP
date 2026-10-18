@@ -2,6 +2,8 @@
 """Run the complete reproducible analysis and write machine-readable outputs."""
 from pathlib import Path
 import math
+import re
+import sys
 import pandas as pd
 
 import aux_fairness
@@ -34,10 +36,24 @@ def write_paper_numbers():
         return f"{100 * float(value):.{digits}f}"
     def macro(name, value):
         lines.append(f"\\newcommand{{\\{name}}}{{{value}\\xspace}}")
+    def rawmacro(name, value):
+        """A macro for a TeX list/body, where trailing inter-word space is wrong."""
+        lines.append(f"\\newcommand{{\\{name}}}{{{value}}}")
     def body(name, rows):
         lines.append(f"\\newcommand{{\\{name}}}{{%")
         lines.extend(rows)
         lines.append("}")
+    def readable(feature):
+        mapping = {"number_inpatient": "Num inpatient", "number_emergency": "Num emergency",
+                   "number_diagnoses": "Num diagnoses", "time_in_hospital": "Time in Hospital",
+                   "num_medications": "Num medications", "diabetesMed_Yes": "DiabetesMed",
+                   "metformin_prescribed": "Metformin", "insulin_prescribed": "Insulin"}
+        if feature in mapping: return mapping[feature]
+        if feature.startswith("discharge_disposition_"):
+            return "Discharge Disp.~" + feature.rsplit("_", 1)[1]
+        return feature.replace("_", " ")
+    excluded = ("discharge_disposition_", "time_in_hospital", "num_medications",
+                "num_lab_procedures", "num_procedures", "number_diagnoses", "diag_")
 
     metrics = read("prediction_metrics.csv")
     held = metrics.loc[metrics.split.eq("held_out_test")].iloc[0]
@@ -66,26 +82,63 @@ def write_paper_numbers():
         "ZMeanAbsSHAP": f(semi.naive_model_mean_abs_shap),
     }.items(): macro(key, value)
 
+    # Prose-level values.  Keeping these as macros makes a rerun the single
+    # source of truth even where the same number appears in a table and prose.
+    macro("TopPermImportance", f(perm.iloc[0].mean_auc_decrease))
+    macro("TopPermFeature", esc(readable(perm.iloc[0].feature)))
+    macro("AuditFeatureCount", str(len(audit)))
+    macro("FragileCount", str(int(audit.sensitivity_category.eq("FRAGILE").sum())))
+    macro("UncertainCount", str(int(audit.sensitivity_category.eq("UNCERTAIN").sum())))
+    macro("RobustCount", str(int(audit.sensitivity_category.eq("ROBUST").sum())))
+    for _, r in audit.iterrows():
+        token = "".join(x.title() for x in str(r.feature).split("_"))
+        macro(f"{token}RD", f(r.aipw_risk_difference))
+        macro(f"{token}EValue", f(r.e_value_ci_bound, 2))
+        macro(f"{token}Retained", pct(r.overlap_fraction))
+        macro(f"{token}Q", f(r.bh_qvalue, 6))
+    for label, part in simulation.groupby("exposure_type", sort=False):
+        token = {"null": "SimNull", "delta_0.4": "SimModerate", "delta_1.0": "SimLarge"}[label]
+        macro(f"{token}RD", f(part.true_rd.mean()))
+        macro(f"{token}Coverage", f(part.ci_covers_truth.mean()))
+    for _, r in robust.iterrows():
+        token = (str(r.reference_method) + "_" + str(r.comparison_method)).replace("TreeSHAP_", "Tree").replace("_dependent", "Dep").replace("_interventional", "Inter").replace("KernelSHAP", "Kernel").replace("_", "")
+        macro(f"Robust{token}Overlap", f"{int(r.top15_overlap_count)}/15")
+        macro(f"Robust{token}Spearman", f(r.spearman_mean_abs_shap))
+
     body("GeneratedValidationRows", [
         f"{esc(r.model)} & {f(r.cv_auc_mean)} & {f(r.roc_auc)} & {f(r.pr_auc)} & {f(r.brier)} \\\\" for _, r in validation.iterrows()])
     body("GeneratedHeldoutRows", [
-        "AUC-ROC & \\HeldAUC\ (95\\% CI: \\HeldAUClo--\\HeldAUChi) \\\\ ",
+        "AUC-ROC & \\HeldAUC{} (95\\% CI: \\HeldAUClo--\\HeldAUChi) \\\\ ",
         "PR-AUC & \\HeldPRAUC \\\\ ", "Brier Score & \\HeldBrier \\\\ ",
         "Precision (at 0.5) & \\HeldPrecision \\\\ ", "Recall (at 0.5) & \\HeldRecall \\\\ ",
         "Calibration Slope & \\HeldSlope \\\\ ", "Calibration Intercept & \\HeldIntercept \\\\ ",
         "\\midrule", "\\multicolumn{2}{l}{\\textit{Top-20\\% operating point (threshold \\TopThreshold)}} \\\\ ",
         "Sensitivity & \\TopSensitivity \\\\ ", "Specificity & \\TopSpecificity \\\\ ", "PPV & \\TopPPV \\\\ "])
-    body("GeneratedSHAPRows", [f"{i} & {esc(r.feature)} & {f(r.mean_abs_shap,4)} \\\\" for i, (_, r) in enumerate(shap.head(12).iterrows(), 1)])
+    body("GeneratedSHAPRows", [f"{i} & {esc(r.feature)}{'\\textsuperscript{\\textdagger}' if r.feature.startswith(excluded) else ''} & {f(r.mean_abs_shap,4)} \\\\" for i, (_, r) in enumerate(shap.head(12).iterrows(), 1)])
     body("GeneratedPermRows", [f"{esc(r.feature)} & {f(r.mean_auc_decrease,4)} \\\\" for _, r in perm.head(12).iterrows()])
-    body("GeneratedPermCoords", [f"({f(r.mean_auc_decrease,4)},{i})" for i, (_, r) in enumerate(perm.head(12).iloc[::-1].iterrows())])
+    perm_plot = perm.head(12).iloc[::-1].reset_index(drop=True)
+    perm_labels = [esc(readable(r.feature)) for _, r in perm_plot.iterrows()]
+    perm_coords = [f"({f(r.mean_auc_decrease,4)},{i})" for i, (_, r) in enumerate(perm_plot.iterrows())]
+    assert len(perm_labels) == len(perm_coords) == len(perm_plot)
+    body("GeneratedPermCoords", perm_coords)
+    rawmacro("GeneratedPermLabels", ",".join(perm_labels))
     body("GeneratedAuditRows", [
         f"{esc(r.feature)} & {rank[r.feature]} & {('Raises' if 'raises' in shap.loc[shap.feature.eq(r.feature),'shap_direction'].iloc[0] else 'Lowers')} & "
         f"${float(r.aipw_risk_difference):+.3f}$ & $[{float(r.rd_ci_lower):+.3f},{float(r.rd_ci_upper):+.3f}]$ & {f(r.aipw_risk_ratio,2)} & $[{f(r.rr_ci_lower,2)},{f(r.rr_ci_upper,2)}]$ & {f(r.e_value_ci_bound,2)} & {pct(r.overlap_fraction)} & {f(r.max_smd_post_weighting)} & {r.sensitivity_category} \\\\" for _, r in audit.iterrows()])
-    body("GeneratedEValueCoords", [f"({f(r.e_value_ci_bound,2)},{i})" for i, (_, r) in enumerate(audit.iloc[::-1].iterrows())])
+    evalue_plot = audit.iloc[::-1].reset_index(drop=True)
+    evalue_labels = [esc(readable(r.feature)) for _, r in evalue_plot.iterrows()]
+    evalue_coords = [f"({f(r.e_value_ci_bound,2)},{i})" for i, (_, r) in enumerate(evalue_plot.iterrows())]
+    assert len(evalue_labels) == len(evalue_coords) == len(evalue_plot)
+    body("GeneratedEValueCoords", evalue_coords)
+    rawmacro("GeneratedEValueLabels", ",".join(evalue_labels))
     sens_by = sensitivity.set_index("feature")
     body("GeneratedSensitivityRows", [f"{esc(r.feature)} & ${float(r.aipw_risk_difference):+.3f}$ & {f(r.e_value_ci_bound,2)} & {r.sensitivity_category} & ${float(sens_by.loc[r.feature,'aipw_risk_difference']):+.3f}$ & {f(sens_by.loc[r.feature,'e_value_ci_bound'],2)} & {sens_by.loc[r.feature,'sensitivity_category']} \\\\" for _, r in audit.iterrows()])
     body("GeneratedSubgroupRows", [f"{esc(r.group)} & {esc(r.value)} & {int(r.n):,} & {pct(r.prevalence)}\\% & {f(r.roc_auc)} & {f(r.mean_predicted_risk)} \\\\" for _, r in subgroup.iterrows()])
-    body("GeneratedDIRows", [f"{esc(r.group)} & {esc(r.value)} & {int(subgroup.loc[(subgroup.group.eq(r.group)) & (subgroup.value.eq(r.value)),'n'].iloc[0]):,} & {f(r.disparate_impact_ratio,2)} & " + ("---" if r.di_ci_lower == "" else f"[{f(r.di_ci_lower,2)}, {f(r.di_ci_upper,2)}]") + f" & {esc(r.flag)} \\\\" for _, r in di.iterrows()])
+    di_flag = {"within_0.80_1.25": "within", "review": "review", "inconclusive": "inconclusive", "reference": "reference"}
+    body("GeneratedDIRows", [f"{esc(r.group)} & {esc(r.value)} & {int(subgroup.loc[(subgroup.group.eq(r.group)) & (subgroup.value.eq(r.value)),'n'].iloc[0]):,} & {f(r.disparate_impact_ratio,2)} & " + ("---" if r.di_ci_lower == "" else f"[{f(r.di_ci_lower,2)}, {f(r.di_ci_upper,2)}]") + f" & {di_flag.get(r.flag, esc(r.flag))} \\\\" for _, r in di.iterrows()])
+    review = di.loc[di.flag.eq("review")]
+    review_text = "; ".join(f"{r.value} ({f(r.disparate_impact_ratio,2)}, [{f(r.di_ci_lower,2)}, {f(r.di_ci_upper,2)}])" for _, r in review.iterrows()) or "none"
+    macro("DIReviewGroups", review_text)
     sim_rows=[]
     for label, part in simulation.groupby("exposure_type", sort=False):
         counts=part.category.value_counts(); sim_rows.append(f"{esc(label)} & {f(part.true_rd.mean())} & {f(part.bias.mean(),4)} & {f(part.ci_covers_truth.mean())} & {int(counts.get('FRAGILE',0))}/{int(counts.get('UNCERTAIN',0))}/{int(counts.get('ROBUST',0))} \\\\")
@@ -100,6 +153,24 @@ def write_paper_numbers():
     _, after = remainder.split(end, 1)
     PAPER.write_text(before + begin + "\n" + generated + end + after, encoding="utf-8")
     print(f"Embedded generated paper values in {PAPER}")
+    # A result literal outside the generated block is a synchronization error.
+    generated_free = before + after
+    csv_text = "\n".join(path.read_text(encoding="utf-8") for path in MODELS.glob("*.csv"))
+    csv_decimals = set(re.findall(r"(?<![\w.])-?\d+\.\d+(?![\w.])", csv_text))
+    allowed = {"0.10", "0.90", "0.80", "1.25", "0.05", "1.0", "2.0", "0.8", "1.05"}
+    hits = []
+    for match in re.finditer(r"(?<![\w.])-?\d+\.\d+(?![\w.])", generated_free):
+        literal = match.group(0)
+        if literal in allowed:
+            continue
+        # Exact token matching deliberately avoids treating layout dimensions
+        # and rounded explanatory constants as model outputs.
+        if literal in csv_decimals:
+            line = generated_free.count("\n", 0, match.start()) + 1
+            hits.append(f"line {line}: {literal}")
+    print("Paper result-literal leak check: " + ("PASS" if not hits else "FAIL\n  " + "\n  ".join(hits)))
+    if hits:
+        raise RuntimeError("result literals remain outside the generated block")
 
 
 def run_all():

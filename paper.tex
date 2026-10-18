@@ -42,6 +42,44 @@
 \newcommand{\TopPPV}{0.213\xspace}
 \newcommand{\ZRank}{1\xspace}
 \newcommand{\ZMeanAbsSHAP}{0.303\xspace}
+\newcommand{\TopPermImportance}{0.069\xspace}
+\newcommand{\TopPermFeature}{Num inpatient\xspace}
+\newcommand{\AuditFeatureCount}{5\xspace}
+\newcommand{\FragileCount}{4\xspace}
+\newcommand{\UncertainCount}{1\xspace}
+\newcommand{\RobustCount}{0\xspace}
+\newcommand{\NumberInpatientRD}{0.074\xspace}
+\newcommand{\NumberInpatientEValue}{2.95\xspace}
+\newcommand{\NumberInpatientRetained}{99.4\xspace}
+\newcommand{\NumberInpatientQ}{0.000000\xspace}
+\newcommand{\DiabetesmedYesRD}{0.015\xspace}
+\newcommand{\DiabetesmedYesEValue}{1.42\xspace}
+\newcommand{\DiabetesmedYesRetained}{99.6\xspace}
+\newcommand{\DiabetesmedYesQ}{0.000000\xspace}
+\newcommand{\NumberEmergencyRD}{0.018\xspace}
+\newcommand{\NumberEmergencyEValue}{1.30\xspace}
+\newcommand{\NumberEmergencyRetained}{37.8\xspace}
+\newcommand{\NumberEmergencyQ}{0.001243\xspace}
+\newcommand{\MetforminPrescribedRD}{-0.007\xspace}
+\newcommand{\MetforminPrescribedEValue}{1.15\xspace}
+\newcommand{\MetforminPrescribedRetained}{92.1\xspace}
+\newcommand{\MetforminPrescribedQ}{0.007253\xspace}
+\newcommand{\InsulinPrescribedRD}{0.015\xspace}
+\newcommand{\InsulinPrescribedEValue}{1.43\xspace}
+\newcommand{\InsulinPrescribedRetained}{99.9\xspace}
+\newcommand{\InsulinPrescribedQ}{0.000000\xspace}
+\newcommand{\SimNullRD}{0.000\xspace}
+\newcommand{\SimNullCoverage}{0.945\xspace}
+\newcommand{\SimModerateRD}{0.043\xspace}
+\newcommand{\SimModerateCoverage}{0.965\xspace}
+\newcommand{\SimLargeRD}{0.133\xspace}
+\newcommand{\SimLargeCoverage}{0.945\xspace}
+\newcommand{\RobustTreepathDepTreeinterventionalOverlap}{12/15\xspace}
+\newcommand{\RobustTreepathDepTreeinterventionalSpearman}{0.932\xspace}
+\newcommand{\RobustTreepathDepKernelOverlap}{12/15\xspace}
+\newcommand{\RobustTreepathDepKernelSpearman}{0.898\xspace}
+\newcommand{\RobustTreeinterventionalKernelOverlap}{14/15\xspace}
+\newcommand{\RobustTreeinterventionalKernelSpearman}{0.959\xspace}
 \newcommand{\GeneratedValidationRows}{%
 XGBoost & 0.670 & 0.677 & 0.238 & 0.098 \\
 LightGBM & 0.670 & 0.677 & 0.238 & 0.098 \\
@@ -50,7 +88,7 @@ Random forest & 0.663 & 0.667 & 0.227 & 0.099 \\
 Logistic regression & 0.661 & 0.667 & 0.223 & 0.099 \\
 }
 \newcommand{\GeneratedHeldoutRows}{%
-AUC-ROC & \HeldAUC\ (95\% CI: \HeldAUClo--\HeldAUChi) \\ 
+AUC-ROC & \HeldAUC{} (95\% CI: \HeldAUClo--\HeldAUChi) \\ 
 PR-AUC & \HeldPRAUC \\ 
 Brier Score & \HeldBrier \\ 
 Precision (at 0.5) & \HeldPrecision \\ 
@@ -65,17 +103,17 @@ PPV & \TopPPV \\
 }
 \newcommand{\GeneratedSHAPRows}{%
 1 & number\_inpatient & 0.3230 \\
-2 & discharge\_disposition\_3 & 0.0695 \\
-3 & number\_diagnoses & 0.0577 \\
-4 & discharge\_disposition\_22 & 0.0563 \\
-5 & time\_in\_hospital & 0.0438 \\
+2 & discharge\_disposition\_3\textsuperscript{\textdagger} & 0.0695 \\
+3 & number\_diagnoses\textsuperscript{\textdagger} & 0.0577 \\
+4 & discharge\_disposition\_22\textsuperscript{\textdagger} & 0.0563 \\
+5 & time\_in\_hospital\textsuperscript{\textdagger} & 0.0438 \\
 6 & diabetesMed\_Yes & 0.0421 \\
-7 & num\_medications & 0.0301 \\
+7 & num\_medications\textsuperscript{\textdagger} & 0.0301 \\
 8 & number\_emergency & 0.0293 \\
 9 & age\_[50-60) & 0.0267 \\
 10 & metformin\_prescribed & 0.0257 \\
-11 & diag\_1\_group\_Respiratory & 0.0220 \\
-12 & discharge\_disposition\_5 & 0.0211 \\
+11 & diag\_1\_group\_Respiratory\textsuperscript{\textdagger} & 0.0220 \\
+12 & discharge\_disposition\_5\textsuperscript{\textdagger} & 0.0211 \\
 }
 \newcommand{\GeneratedPermRows}{%
 number\_inpatient & 0.0691 \\
@@ -105,6 +143,7 @@ discharge\_disposition\_15 & 0.0014 \\
 (0.0202,10)
 (0.0691,11)
 }
+\newcommand{\GeneratedPermLabels}{Discharge Disp.~15,diag 1 group Respiratory,DiabetesMed,Num emergency,diag 1 group Other,Time in Hospital,Num diagnoses,Discharge Disp.~5,Discharge Disp.~2,Discharge Disp.~3,Discharge Disp.~22,Num inpatient}
 \newcommand{\GeneratedAuditRows}{%
 number\_inpatient & 1 & Raises & $+0.074$ & $[+0.069,+0.079]$ & 1.85 & $[1.78,1.92]$ & 2.95 & 99.4 & 0.014 & UNCERTAIN \\
 diabetesMed\_Yes & 6 & Raises & $+0.015$ & $[+0.010,+0.020]$ & 1.15 & $[1.10,1.20]$ & 1.42 & 99.6 & 0.013 & FRAGILE \\
@@ -119,6 +158,7 @@ insulin\_prescribed & 13 & Raises & $+0.015$ & $[+0.011,+0.019]$ & 1.14 & $[1.10
 (1.42,3)
 (2.95,4)
 }
+\newcommand{\GeneratedEValueLabels}{Insulin,Metformin,Num emergency,DiabetesMed,Num inpatient}
 \newcommand{\GeneratedSensitivityRows}{%
 number\_inpatient & $+0.074$ & 2.95 & UNCERTAIN & $+0.076$ & 2.99 & UNCERTAIN \\
 diabetesMed\_Yes & $+0.015$ & 1.42 & FRAGILE & $+0.015$ & 1.43 & FRAGILE \\
@@ -152,9 +192,9 @@ age & [40-50) & 1,828 & 0.71 & [0.58, 0.86] & inconclusive \\
 age & [50-60) & 3,460 & 0.72 & [0.63, 0.83] & inconclusive \\
 age & [60-70) & 4,447 & 0.85 & [0.75, 0.95] & inconclusive \\
 age & [70-80) & 5,032 & 1.00 & --- & reference \\
-age & [80-90) & 3,290 & 1.00 & [0.90, 1.11] & within\_0.80\_1.25 \\
+age & [80-90) & 3,290 & 1.00 & [0.90, 1.11] & within \\
 age & [90-100) & 482 & 0.82 & [0.65, 1.00] & inconclusive \\
-gender & Male & 9,014 & 0.97 & [0.89, 1.05] & within\_0.80\_1.25 \\
+gender & Male & 9,014 & 0.97 & [0.89, 1.05] & within \\
 gender & Female & 10,807 & 1.00 & --- & reference \\
 race & Asian & 125 & 0.45 & [0.17, 0.73] & review \\
 race & Caucasian & 15,232 & 1.00 & --- & reference \\
@@ -162,6 +202,7 @@ race & Hispanic & 372 & 0.89 & [0.61, 1.18] & inconclusive \\
 race & Other & 291 & 0.77 & [0.49, 1.10] & inconclusive \\
 race & AfricanAmerican & 3,801 & 1.14 & [1.03, 1.25] & inconclusive \\
 }
+\newcommand{\DIReviewGroups}{Asian (0.45, [0.17, 0.73])\xspace}
 \newcommand{\GeneratedSimulationRows}{%
 null & 0.000 & -0.0000 & 0.945 & 200/0/0 \\
 delta\_0.4 & 0.043 & -0.0001 & 0.965 & 19/181/0 \\
@@ -169,7 +210,7 @@ delta\_1.0 & 0.133 & -0.0003 & 0.945 & 0/0/200 \\
 }
 \newcommand{\GeneratedRobustnessRows}{%
 TreeSHAP\_path\_dependent vs. TreeSHAP\_interventional & 12/15 & 0.932 & yes \\
-TreeSHAP\_path\_dependent vs. KernelSHAP & 12/15 & 0.897 & yes \\
+TreeSHAP\_path\_dependent vs. KernelSHAP & 12/15 & 0.898 & yes \\
 TreeSHAP\_interventional vs. KernelSHAP & 14/15 & 0.959 & yes \\
 }
 %%END_GENERATED
@@ -246,7 +287,7 @@ sainitin.d23@iiits.in
 % ABSTRACT
 % ══════════════════════════════════════════════════════════════════════════════
 \begin{abstract}
-Clinical AI explanations can be mistaken for treatment recommendations. We present \textbf{CausalShield}, a reproducible four-component audit pipeline for 99,343 eligible UCI Diabetes 130-US Hospitals encounters. Component~1 selects the best readmission model from five candidates via 5-fold patient-grouped cross-validation and computes held-out SHAP explanations. Component~2 conducts an exploratory, cross-fitted AIPW audit of five timing-eligible non-demographic features, with common-support trimming and E-values from risk-ratio confidence bounds. Component~3 reports held-out subgroup performance and disparate-impact ratios with patient-bootstrap confidence intervals. Component~4 withholds patient-level recourse when actionability or sensitivity criteria are not met. The selected model (XGBoost) achieved held-out ROC-AUC 0.664 (patient-cluster bootstrap 95\% CI 0.649--0.678) and PR-AUC 0.222. At the top-20\% operating point (threshold 0.146), sensitivity is 0.382, specificity 0.823, and PPV 0.213. SHAP direction agreed with the AIPW direction for all five primary features, while four associations were FRAGILE and one was UNCERTAIN by E-value sensitivity. Removing discharge-coded diagnosis groups from the adjustment set did not change these categories. No audited feature met both the actionability and robustness requirements for recourse. In a separate semi-synthetic diagnostic, a planted proxy had no common support and estimation was blocked. These results are observational sensitivity analyses, not treatment-effect estimates or clinical recommendations.
+Clinical AI explanations can be mistaken for treatment recommendations. We present \textbf{CausalShield}, a reproducible four-component audit pipeline for 99,343 eligible UCI Diabetes 130-US Hospitals encounters. Component~1 selects the best readmission model from five candidates via 5-fold patient-grouped cross-validation and computes held-out SHAP explanations. Component~2 conducts an exploratory, cross-fitted AIPW audit of \AuditFeatureCount timing-eligible non-demographic features, with common-support trimming and E-values from risk-ratio confidence bounds. Component~3 reports held-out subgroup performance and disparate-impact ratios with patient-bootstrap confidence intervals. Component~4 withholds patient-level recourse when actionability or sensitivity criteria are not met. The selected model (XGBoost) achieved held-out ROC-AUC \HeldAUC (patient-cluster bootstrap 95\% CI \HeldAUClo--\HeldAUChi) and PR-AUC \HeldPRAUC. At the top-20\% operating point (threshold \TopThreshold), sensitivity is \TopSensitivity, specificity \TopSpecificity, and PPV \TopPPV. SHAP direction agreed with the AIPW direction for all \AuditFeatureCount primary features, while \FragileCount associations were FRAGILE and \UncertainCount was UNCERTAIN by E-value sensitivity. Removing discharge-coded diagnosis groups from the adjustment set did not change these categories. No audited feature met both the actionability and robustness requirements for recourse. In a separate semi-synthetic diagnostic, a planted proxy had no common support and estimation was blocked. These results are observational sensitivity analyses, not treatment-effect estimates or clinical recommendations.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -508,7 +549,7 @@ Patient-grouped splits (using \texttt{GroupShuffleSplit}):
 \begin{table}[htbp]
 \caption{Data Split Summary}
 \centering
-\begin{tabular}{l r r}
+\begin{tabular}{l r r l}
 \toprule
 \textbf{Split} & \textbf{Encounters} & \textbf{Patients} \\
 \midrule
@@ -570,11 +611,7 @@ Table~\ref{tab:validation} shows grouped-CV and validation performance for all f
 \toprule
 \textbf{Model} & \textbf{CV AUC} & \textbf{Val AUC} & \textbf{PR-AUC} & \textbf{Brier} \\
 \midrule
-\textbf{XGBoost}    & \textbf{0.670} & \textbf{0.677} & \textbf{0.238} & \textbf{0.098} \\
-LightGBM            & 0.670 & 0.677 & 0.238 & 0.098 \\
-Gradient Boosting   & 0.669 & 0.676 & 0.234 & 0.099 \\
-Logistic Regression & 0.661 & 0.667 & 0.223 & 0.099 \\
-Random Forest       & 0.664 & 0.667 & 0.227 & 0.099 \\
+\GeneratedValidationRows
 \bottomrule
 \end{tabular}
 \label{tab:validation}
@@ -589,24 +626,13 @@ XGBoost achieved the highest mean grouped-CV AUC-ROC and was selected for held-o
 \toprule
 \textbf{Metric} & \textbf{Score} \\
 \midrule
-AUC-ROC & 0.664 (95\% CI: 0.649--0.678) \\
-PR-AUC & 0.222 \\
-Brier Score & 0.094 \\
-Precision (at 0.5) & 0.538 \\
-Recall (at 0.5) & 0.006 \\
-Calibration Slope & 1.077 \\
-Calibration Intercept & 0.126 \\
-\midrule
-\multicolumn{2}{l}{\textit{Top-20\% operating point (threshold 0.146)}} \\
-Sensitivity & 0.383 \\
-Specificity & 0.823 \\
-PPV & 0.213 \\
+\GeneratedHeldoutRows
 \bottomrule
 \end{tabular}
 \label{tab:perf}
 \end{table}
 
-The held-out AUC-ROC is 0.664. The very low recall at the default 0.5 threshold reflects class imbalance. At the top-20\% operating point (risk threshold 0.146), the model achieves sensitivity 0.383, specificity 0.823, and PPV 0.213. The Brier score of 0.094 and calibration slope near 1.0 describe probability performance on this held-out split.
+The held-out AUC-ROC is \HeldAUC. The very low recall at the default 0.5 threshold reflects class imbalance. At the top-20\% operating point (risk threshold \TopThreshold), the model achieves sensitivity \TopSensitivity, specificity \TopSpecificity, and PPV \TopPPV. The Brier score of \HeldBrier and calibration slope \HeldSlope describe probability performance on this held-out split.
 
 \subsection{Component~1: Feature Importance}
 
@@ -621,18 +647,7 @@ TreeSHAP was computed for every held-out encounter. Table~\ref{tab:shap_top} sho
 \toprule
 \textbf{Rank} & \textbf{Feature} & \textbf{Mean $|\phi|$} \\
 \midrule
-1 & number\_inpatient & 0.3230 \\
-2 & discharge\_disposition\_3$^\dagger$ & 0.0695 \\
-3 & number\_diagnoses$^\dagger$ & 0.0577 \\
-4 & discharge\_disposition\_22$^\dagger$ & 0.0563 \\
-5 & time\_in\_hospital$^\dagger$ & 0.0438 \\
-6 & diabetesMed\_Yes & 0.0421 \\
-7 & num\_medications$^\dagger$ & 0.0301 \\
-8 & number\_emergency & 0.0293 \\
-9 & age\_[50-60) & 0.0267 \\
-10 & metformin\_prescribed & 0.0257 \\
-11 & insulin\_prescribed & 0.0220 \\
-12 & diag\_1\_group\_Respiratory$^\dagger$ & 0.0209 \\
+\GeneratedSHAPRows
 \bottomrule
 \end{tabular}
 \begin{tablenotes}
@@ -647,13 +662,11 @@ TreeSHAP was computed for every held-out encounter. Table~\ref{tab:shap_top} sho
 \caption{Explainer Robustness on 2,000 Held-Out Rows}
 \centering
 \footnotesize
-\begin{tabular}{l r r}
+\begin{tabular}{l r r l}
 \toprule
-\textbf{Comparison} & \textbf{Top-15 overlap} & \textbf{Spearman $\rho$} \\
+\textbf{Comparison} & \textbf{Top-15 overlap} & \textbf{Spearman $\rho$} & \textbf{Eligible set changed?} \\
 \midrule
-Path-dependent TreeSHAP vs. interventional TreeSHAP & 13/15 & 0.932 \\
-Path-dependent TreeSHAP vs. KernelSHAP & 13/15 & 0.892 \\
-Interventional TreeSHAP vs. KernelSHAP & 13/15 & 0.961 \\
+\GeneratedRobustnessRows
 \bottomrule
 \end{tabular}
 \label{tab:explainer_robustness}
@@ -672,20 +685,7 @@ On a fixed 2,000-row held-out subset, global rankings were compared across path-
     xlabel={Mean AUC-ROC Decrease},
     xlabel style={font=\small},
     ytick=data,
-    yticklabels={
-        Diag 1 Respiratory,
-        Discharge Disp.~18,
-        DiabetesMed,
-        Num Emergency,
-        Time in Hospital,
-        Diag 1 Other,
-        Num Diagnoses,
-        Discharge Disp.~5,
-        Discharge Disp.~2,
-        Discharge Disp.~3,
-        Discharge Disp.~22,
-        Num Inpatient
-    },
+    yticklabels={\GeneratedPermLabels},
     yticklabel style={font=\scriptsize},
     xticklabel style={font=\scriptsize},
     xmin=0, xmax=0.08,
@@ -695,26 +695,15 @@ On a fixed 2,000-row held-out subset, global rankings were compared across path-
     enlarge y limits={abs=0.35cm},
 ]
 \addplot[fill=layer1!60, draw=layer1] coordinates {
-    (0.002,0)
-    (0.002,1)
-    (0.002,2)
-    (0.002,3)
-    (0.003,4)
-    (0.003,5)
-    (0.004,6)
-    (0.007,7)
-    (0.008,8)
-    (0.013,9)
-    (0.020,10)
-    (0.069,11)
+    \GeneratedPermCoords
 };
 \end{axis}
 \end{tikzpicture}
-\caption{Top 12 features by permutation importance (mean AUC-ROC decrease, 5 repeats). \texttt{number\_inpatient} dominates (0.069), followed by discharge disposition categories. Values are rounded to 3 decimal places.}
+\caption{Top 12 features by permutation importance (mean AUC-ROC decrease, 5 repeats). \texttt{number\_inpatient} dominates (\TopPermImportance), followed by discharge disposition categories. Values are rounded to 3 decimal places.}
 \label{fig:importance}
 \end{figure}
 
-Fig.~\ref{fig:importance} shows the permutation importance ranking. The \texttt{number\_inpatient} feature dominates ($\Delta$AUC = 0.069), followed by several discharge disposition categories. Notably, many of the top features are administrative/disposition indicators rather than clinical measurements, consistent with the known limitations of this dataset. These post-encounter or within-encounter variables are excluded from the Component~2 exposure audit.
+Fig.~\ref{fig:importance} shows the permutation importance ranking. The \texttt{number\_inpatient} feature dominates ($\Delta$AUC = \TopPermImportance), followed by several discharge disposition categories. Notably, many of the top features are administrative/disposition indicators rather than clinical measurements, consistent with the known limitations of this dataset. These post-encounter or within-encounter variables are excluded from the Component~2 exposure audit.
 
 \subsection{Component~2: SHAP-Guided Causal Audit}
 
@@ -730,16 +719,12 @@ Table~\ref{tab:causal} presents the merged SHAP-direction and AIPW audit for all
 \toprule
 \textbf{Feature} & \textbf{Rank} & \textbf{SHAP dir.} & \textbf{RD} & \textbf{RD 95\% CI} & \textbf{RR} & \textbf{RR 95\% CI} & \textbf{E-val} & \textbf{Ret.\%} & \textbf{SMD} & \textbf{Cat.} \\
 \midrule
-Num inpatient    & 1  & Raises & $+.074$ & $[+.069,+.079]$ & 1.84 & $[1.77,1.92]$ & 2.95 & 99.4 & 0.014 & \cellcolor{uncertain!15}UNCERTAIN \\
-DiabetesMed      & 6  & Raises & $+.015$ & $[+.010,+.019]$ & 1.14 & $[1.09,1.19]$ & 1.41 & 99.6 & 0.013 & \cellcolor{fragile!15}FRAGILE \\
-Num emergency    & 8  & Raises & $+.021$ & $[+.009,+.032]$ & 1.15 & $[1.07,1.23]$ & 1.34 & 37.7 & 0.055 & \cellcolor{fragile!15}FRAGILE \\
-Metformin        & 10 & Lowers & $-.007$ & $[-.012,-.002]$ & 0.94 & $[0.89,0.98]$ & 1.15 & 92.1 & 0.018 & \cellcolor{fragile!15}FRAGILE \\
-Insulin          & 11 & Raises & $+.015$ & $[+.011,+.019]$ & 1.14 & $[1.10,1.18]$ & 1.44 & 99.9 & 0.012 & \cellcolor{fragile!15}FRAGILE \\
+\GeneratedAuditRows
 \bottomrule
 \end{tabular}
 \begin{tablenotes}
 \scriptsize
-\item Ret.\% = retained encounters after propensity trimming (0.10--0.90). SMD = max post-weighting standardised mean difference. All five BH q-values are $<0.05$ (inpatient, diabetesMed, and insulin $<0.001$; emergency 0.000395; metformin 0.007547). Diagnosis-group features are excluded as exposures because ICD codes are assigned at discharge. E-value thresholds 2 and 3 are conventional.
+\item Ret.\% = retained encounters after propensity trimming (0.10--0.90). SMD = max post-weighting standardised mean difference. All five BH q-values are $<0.05$; the nonzero emergency and metformin values are \NumberEmergencyQ and \MetforminPrescribedQ. Diagnosis-group features are excluded as exposures because ICD codes are assigned at discharge. E-value thresholds 2 and 3 are conventional.
 \end{tablenotes}
 \end{threeparttable}
 \label{tab:causal}
@@ -758,13 +743,7 @@ Table~\ref{tab:causal} compares the held-out model direction with the adjusted o
     xlabel={E-Value (CI bound)},
     xlabel style={font=\small},
     ytick=data,
-    yticklabels={
-        Metformin,
-        Num emergency,
-        Insulin,
-        DiabetesMed,
-        Num inpatient
-    },
+    yticklabels={\GeneratedEValueLabels},
     yticklabel style={font=\scriptsize},
     xticklabel style={font=\scriptsize},
     xmin=0, xmax=3.2,
@@ -775,12 +754,8 @@ Table~\ref{tab:causal} compares the held-out model direction with the adjusted o
     extra x tick style={grid=major, grid style={red, dashed, thick}},
 ]
 % FRAGILE bars (red) - 4 FRAGILE features
-\addplot[fill=fragile!40, draw=fragile] coordinates {
-    (1.15,0) (1.34,1) (1.44,2) (1.41,3)
-};
-% UNCERTAIN bars (yellow) - 1 UNCERTAIN feature
-\addplot[fill=uncertain!40, draw=uncertain] coordinates {
-    (2.95,4)
+\addplot[fill=layer2!40, draw=layer2] coordinates {
+    \GeneratedEValueCoords
 };
 
 % Threshold labels
@@ -789,17 +764,15 @@ Table~\ref{tab:causal} compares the held-out model direction with the adjusted o
 \end{axis}
 
 % Legend
-\node[font=\scriptsize, fill=fragile!30, draw=fragile, rounded corners=2pt, inner sep=2pt] at (3.8, 0.5) {\textbf{FRAGILE}};
-\node[font=\scriptsize, fill=uncertain!30, draw=uncertain, rounded corners=2pt, inner sep=2pt] at (3.8, 1.2) {\textbf{UNCERTAIN}};
 \end{tikzpicture}
-\caption{E-value sensitivity classification of the five temporally eligible audit features. Red dashed lines mark the FRAGILE ($E \leq 2$) and ROBUST ($E > 3$) thresholds. No eligible feature reaches ROBUST; only \texttt{number\_inpatient} ($E = 2.95$) reaches UNCERTAIN.}
+\caption{E-value sensitivity values for the five temporally eligible audit features. Red dashed lines mark the conventional thresholds $E=2$ and $E=3$. No eligible feature reaches ROBUST; only \texttt{number\_inpatient} ($E = \NumberInpatientEValue$) reaches UNCERTAIN.}
 \label{fig:evalue}
 \end{figure}
 
 \textbf{Key findings:}
 \begin{itemize}[leftmargin=*, nosep]
-    \item \textbf{No ROBUST association:} Four of five estimates are FRAGILE ($E \leq 2$); only \texttt{number\_inpatient} ($E = 2.95$) reaches UNCERTAIN.
-    \item \textbf{Number inpatient} ($E = 2.95$, UNCERTAIN): Strongest SHAP-ranked audit feature, but it is historical utilization, not an intervention target.
+    \item \textbf{No ROBUST association:} \FragileCount of \AuditFeatureCount estimates are FRAGILE ($E \leq 2$); only \texttt{number\_inpatient} ($E = \NumberInpatientEValue$) reaches UNCERTAIN.
+    \item \textbf{Number inpatient} ($E = \NumberInpatientEValue$, UNCERTAIN): Strongest SHAP-ranked audit feature, but it is historical utilization, not an intervention target.
     \item \textbf{Medication features:} Insulin, metformin, and any diabetes medication remain FRAGILE; their observed directions must not be interpreted as treatment effects.
     \item Sensitivity categories quantify the strength of unmeasured confounding needed to move a risk-ratio confidence bound to 1; they do \textit{not} establish that any feature is a valid intervention target.
 \end{itemize}
@@ -817,24 +790,7 @@ Table~\ref{tab:subgroup} summarizes model performance across demographic subgrou
 \toprule
 \textbf{Group} & \textbf{Value} & \textbf{N} & \textbf{Prev.} & \textbf{AUC} & \textbf{Mean $\hat{P}$} \\
 \midrule
-\multirow{9}{*}{Age} & [10--20) & 125 & 7.2\% & 0.784 & 0.077 \\
- & [20--30) & 342 & 14.9\% & 0.763 & 0.134 \\
- & [30--40) & 776 & 9.5\% & 0.717 & 0.116 \\
- & [40--50) & 1,828 & 9.6\% & 0.634 & 0.104 \\
- & [50--60) & 3,460 & 9.4\% & 0.674 & 0.101 \\
- & [60--70) & 4,447 & 11.0\% & 0.670 & 0.112 \\
- & [70--80) & 5,032 & 12.1\% & 0.655 & 0.120 \\
- & [80--90) & 3,290 & 12.9\% & 0.629 & 0.122 \\
- & [90--100) & 482 & 10.4\% & 0.590 & 0.118 \\
-\midrule
-\multirow{5}{*}{Race} & AfricanAmerican & 4,258 & 11.1\% & 0.658 & 0.112 \\
- & Asian & 125 & 9.6\% & 0.658 & 0.095 \\
- & Caucasian & 14,775 & 11.3\% & 0.663 & 0.115 \\
- & Hispanic & 372 & 10.5\% & 0.717 & 0.104 \\
- & Other & 291 & 6.9\% & 0.714 & 0.102 \\
-\midrule
-\multirow{2}{*}{Gender} & Male & 9,014 & 11.2\% & 0.668 & 0.113 \\
- & Female & 10,807 & 11.1\% & 0.660 & 0.114 \\
+\GeneratedSubgroupRows
 \bottomrule
 \end{tabular}
 \label{tab:subgroup}
@@ -897,29 +853,12 @@ Table~\ref{tab:di} presents the full disparate-impact ratios at the top-20\% ope
 \toprule
 \textbf{Group} & \textbf{Value} & \textbf{N} & \textbf{DI ratio} & \textbf{95\% CI} & \textbf{Flag} \\
 \midrule
-\multirow{9}{*}{Age} & [10--20) & 125 & 0.46 & [0.11, 0.88] & inconclusive \\
- & [20--30) & 342 & 1.16 & [0.68, 1.65] & inconclusive \\
- & [30--40) & 776 & 0.98 & [0.74, 1.22] & inconclusive \\
- & [40--50) & 1,828 & 0.69 & [0.56, 0.83] & inconclusive \\
- & [50--60) & 3,460 & 0.71 & [0.62, 0.82] & inconclusive \\
- & [60--70) & 4,447 & 0.85 & [0.76, 0.95] & inconclusive \\
- & [70--80)$^{\text{ref}}$ & 5,032 & 1.00 & --- & --- \\
- & [80--90) & 3,290 & 1.01 & [0.90, 1.13] & within \\
- & [90--100) & 482 & 0.82 & [0.66, 1.00] & inconclusive \\
-\midrule
-\multirow{5}{*}{Race} & AfricanAmerican & 4,258 & 1.03 & [0.93, 1.13] & within \\
- & Asian & 125 & 0.48 & [0.17, 0.85] & inconclusive \\
- & Caucasian$^{\text{ref}}$ & 14,775 & 1.00 & --- & --- \\
- & Hispanic & 372 & 0.87 & [0.60, 1.14] & inconclusive \\
- & Other & 291 & 0.74 & [0.46, 1.03] & inconclusive \\
-\midrule
-\multirow{2}{*}{Gender} & Male & 9,014 & 0.98 & [0.90, 1.06] & within \\
- & Female$^{\text{ref}}$ & 10,807 & 1.00 & --- & --- \\
+\GeneratedDIRows
 \bottomrule
 \end{tabular}
 \begin{tablenotes}
 \scriptsize
-\item Reference group is the largest subgroup. ``Within'' means the entire 95\% CI lies in [0.80, 1.25]; ``inconclusive'' means it crosses a band edge. Groups with $n < 400$ have wide uncertainty; no group is flagged for review in this run.
+\item Reference group is the largest subgroup. ``Within'' means the entire 95\% CI lies in [0.80, 1.25]; ``inconclusive'' means it crosses a band edge. Review groups from this run: \DIReviewGroups.
 \end{tablenotes}
 \end{threeparttable}
 \label{tab:di}
@@ -940,17 +879,13 @@ ICD codes are assigned at discharge and may introduce post-treatment bias when u
 \cmidrule(lr){2-4} \cmidrule(lr){5-7}
  & \textbf{RD} & \textbf{E-val} & \textbf{Cat.} & \textbf{RD} & \textbf{E-val} & \textbf{Cat.} \\
 \midrule
-Num inpatient    & $+.074$ & 2.95 & UNCERTAIN & $+.076$ & 2.99 & UNCERTAIN \\
-DiabetesMed      & $+.015$ & 1.41 & FRAGILE   & $+.015$ & 1.43 & FRAGILE \\
-Num emergency    & $+.021$ & 1.34 & FRAGILE   & $+.022$ & 1.35 & FRAGILE \\
-Metformin        & $-.007$ & 1.15 & FRAGILE   & $-.009$ & 1.23 & FRAGILE \\
-Insulin          & $+.015$ & 1.44 & FRAGILE   & $+.016$ & 1.45 & FRAGILE \\
+\GeneratedSensitivityRows
 \bottomrule
 \end{tabular}
 \label{tab:sens}
 \end{table}
 
-All five sensitivity categories are unchanged. Risk differences shift by at most 0.002, and E-values move by at most 0.08. This is a limited sensitivity result, not proof that discharge-coded adjustment is harmless.
+All five sensitivity categories are unchanged. This is a limited sensitivity result, not proof that discharge-coded adjustment is harmless.
 
 \subsection{Constrained Recourse Audit}
 
@@ -977,11 +912,11 @@ Z_i = \mathbf{1}[0.7 \cdot \mathbf{1}(\texttt{number\_inpatient}_i > 0) + 0.3 \c
 \end{equation}
 where $U_i \sim \text{Uniform}(0,1)$. By construction, $Z$ is strongly correlated with readmission through \texttt{number\_inpatient} (a confounder), but has no direct effect.
 
-A na\"ive gradient boosting model trained \textit{without} \texttt{number\_inpatient} as a predictor ranks $Z$ first by mean $|\phi|$ (0.301). This diagnostic reports only the planted proxy's predictive rank.
+A na\"ive gradient boosting model trained \textit{without} \texttt{number\_inpatient} as a predictor ranks $Z$ \ZRank by mean $|\phi|$ (\ZMeanAbsSHAP). This diagnostic reports only the planted proxy's predictive rank.
 
 After adjustment for \texttt{number\_inpatient}, the near-deterministic planted exposure has no common support: common-support trimming ($0.10 < \hat{e} < 0.90$) retains zero encounters, so estimation is blocked. This is a diagnostic of the positivity rule, not a validation of real-data causal claims.
 
-As a complementary implementation check, a 200-replication Monte Carlo simulation uses two binary confounders derived from real covariates and correctly specified logistic nuisance models. The true RD is calculated from potential-outcome probabilities in every replication. Table~\ref{tab:simulation} reports the null, moderate-effect (RD 0.043), and larger-effect (RD 0.133) scenarios. This simple DGP checks the estimator implementation; it does not validate the observational analysis.
+As a complementary implementation check, a 200-replication Monte Carlo simulation uses two binary confounders derived from real covariates and correctly specified logistic nuisance models. The true RD is calculated from potential-outcome probabilities in every replication. Table~\ref{tab:simulation} reports the null, moderate-effect (RD \SimModerateRD), and larger-effect (RD \SimLargeRD) scenarios. This simple DGP checks the estimator implementation; it does not validate the observational analysis.
 
 \begin{table}[htbp]
 \caption{Simple-DGP AIPW Implementation Check (200 Replications per Scenario)}
@@ -990,9 +925,7 @@ As a complementary implementation check, a 200-replication Monte Carlo simulatio
 \toprule
 Scenario & True RD & Mean bias & 95\% coverage & Category counts (F/U/R) \\
 \midrule
-Null & 0.000 & -0.0000 & 0.945 & 200/0/0 \\
-$\delta=0.4$ & 0.043 & -0.0001 & 0.965 & 19/181/0 \\
-$\delta=1.0$ & 0.133 & -0.0003 & 0.945 & 0/0/200 \\
+\GeneratedSimulationRows
 \bottomrule
 \end{tabular}
 \label{tab:simulation}
@@ -1004,7 +937,7 @@ $\delta=1.0$ & 0.133 & -0.0003 & 0.945 & 0/0/200 \\
 \section{Discussion}
 
 \subsection{Prediction Performance in Context}
-The held-out AUC-ROC of 0.664 is modest. The dataset lacks clinical notes, real-time vitals, imaging, and social determinants of health, which limits the information available to any model. The near-zero recall at a 0.5 threshold highlights the importance of threshold selection in class-imbalanced clinical settings.
+The held-out AUC-ROC of \HeldAUC is modest. The dataset lacks clinical notes, real-time vitals, imaging, and social determinants of health, which limits the information available to any model. The near-zero recall at a 0.5 threshold highlights the importance of threshold selection in class-imbalanced clinical settings.
 
 \subsection{Interpreting the Causal Audit}
 The AIPW results should be interpreted as an observational sensitivity analysis, not as causal treatment-effect estimates. Several factors limit causal interpretation:
@@ -1034,7 +967,7 @@ The age-stratified AUC estimates range from 0.590 for ages 90--100 to 0.784 for 
     \item \textbf{Author-defined actionability policy:} The actionability gate is operationalised by the authors, not by clinicians or patients. A different policy could allow different features and change which recourse recommendations, if any, are emitted.
     \item \textbf{Administrative data:} The dataset lacks clinical notes, imaging, vitals, and social determinants, limiting both prediction quality and causal inference validity.
     \item \textbf{Binary exposure:} Continuous features are binarised at the median, losing dose-response nuance.
-    \item \textbf{Modest discrimination:} Held-out AUC of 0.664 limits the clinical utility of the prediction model itself.
+    \item \textbf{Modest discrimination:} Held-out AUC of \HeldAUC limits the clinical utility of the prediction model itself.
     \item \textbf{No actionable recourse generated:} No feature was both actionability-approved and ROBUST. While this is a safety feature, it means the pipeline does not currently produce actionable ``what-if'' scenarios.
     \item \textbf{Restricted overlap populations:} Common-support trimming changes the target population and can leave small audit samples, as seen for \texttt{number\_emergency} (38.8\% retained).
     \item \textbf{Diagnosis-group adjustment:} Diagnosis-group indicators (ICD codes) are coded at discharge and may partially reflect post-treatment information. A sensitivity analysis excluding these confounders (Table~\ref{tab:sens}) shows that all five sensitivity categories and risk-difference estimates are robust to this choice.
