@@ -77,9 +77,40 @@
 \newcommand{\RobustTreepathDepTreeinterventionalOverlap}{12/15\xspace}
 \newcommand{\RobustTreepathDepTreeinterventionalSpearman}{0.932\xspace}
 \newcommand{\RobustTreepathDepKernelOverlap}{12/15\xspace}
-\newcommand{\RobustTreepathDepKernelSpearman}{0.898\xspace}
+\newcommand{\RobustTreepathDepKernelSpearman}{0.892\xspace}
 \newcommand{\RobustTreeinterventionalKernelOverlap}{14/15\xspace}
-\newcommand{\RobustTreeinterventionalKernelSpearman}{0.959\xspace}
+\newcommand{\RobustTreeinterventionalKernelSpearman}{0.956\xspace}
+\newcommand{\AgeAUCMin}{0.594\xspace}
+\newcommand{\AgeAUCMinGroup}{[90--100)\xspace}
+\newcommand{\AgeAUCMax}{0.764\xspace}
+\newcommand{\AgeAUCMaxGroup}{[20--30)\xspace}
+\newcommand{\YoungestGroup}{[10--20)\xspace}
+\newcommand{\YoungestAUC}{0.757\xspace}
+\newcommand{\YoungestN}{125\xspace}
+\newcommand{\OtherRaceAUC}{0.715\xspace}
+\newcommand{\OtherRaceN}{291\xspace}
+\newcommand{\OtherRacePrev}{6.9\%\xspace}
+\newcommand{\MaleAUC}{0.668\xspace}
+\newcommand{\FemaleAUC}{0.661\xspace}
+\newcommand{\TopSHAP}{0.323\xspace}
+\newcommand{\ScreenedPatients}{20\xspace}
+\newcommand{\NumberInpatientRetainedPct}{99.4\%\xspace}
+\newcommand{\DiabetesmedYesRetainedPct}{99.6\%\xspace}
+\newcommand{\NumberEmergencyRetainedPct}{37.8\%\xspace}
+\newcommand{\MetforminPrescribedRetainedPct}{92.1\%\xspace}
+\newcommand{\InsulinPrescribedRetainedPct}{99.9\%\xspace}
+\newcommand{\DIReviewSentence}{Only Asian (DI 0.45, 95\% CI [0.17, 0.73], $n=125$) is flagged for review (95\% CI wholly outside [0.80, 1.25]); every other group whose CI crosses a band edge is inconclusive\xspace}
+\newcommand{\GeneratedAgeAUCCoords}{%
+([10-20),0.757)
+([20-30),0.764)
+([30-40),0.713)
+([40-50),0.633)
+([50-60),0.673)
+([60-70),0.671)
+([70-80),0.656)
+([80-90),0.628)
+([90-100),0.594)
+}
 \newcommand{\GeneratedValidationRows}{%
 XGBoost & 0.670 & 0.677 & 0.238 & 0.098 \\
 LightGBM & 0.670 & 0.677 & 0.238 & 0.098 \\
@@ -143,7 +174,7 @@ discharge\_disposition\_15 & 0.0014 \\
 (0.0202,10)
 (0.0691,11)
 }
-\newcommand{\GeneratedPermLabels}{Discharge Disp.~15,diag 1 group Respiratory,DiabetesMed,Num emergency,diag 1 group Other,Time in Hospital,Num diagnoses,Discharge Disp.~5,Discharge Disp.~2,Discharge Disp.~3,Discharge Disp.~22,Num inpatient}
+\newcommand{\GeneratedPermLabels}{Discharge Disp.~15,Diag 1 respiratory,DiabetesMed,Num emergency,Diag 1 other,Time in Hospital,Num diagnoses,Discharge Disp.~5,Discharge Disp.~2,Discharge Disp.~3,Discharge Disp.~22,Num inpatient}
 \newcommand{\GeneratedAuditRows}{%
 number\_inpatient & 1 & Raises & $+0.074$ & $[+0.069,+0.079]$ & 1.85 & $[1.78,1.92]$ & 2.95 & 99.4 & 0.014 & UNCERTAIN \\
 diabetesMed\_Yes & 6 & Raises & $+0.015$ & $[+0.010,+0.020]$ & 1.15 & $[1.10,1.20]$ & 1.42 & 99.6 & 0.013 & FRAGILE \\
@@ -209,9 +240,9 @@ delta\_0.4 & 0.043 & -0.0001 & 0.965 & 19/181/0 \\
 delta\_1.0 & 0.133 & -0.0003 & 0.945 & 0/0/200 \\
 }
 \newcommand{\GeneratedRobustnessRows}{%
-TreeSHAP\_path\_dependent vs. TreeSHAP\_interventional & 12/15 & 0.932 & yes \\
-TreeSHAP\_path\_dependent vs. KernelSHAP & 12/15 & 0.898 & yes \\
-TreeSHAP\_interventional vs. KernelSHAP & 14/15 & 0.959 & yes \\
+TreeSHAP (path) vs. TreeSHAP (interv.) & 12/15 & 0.932 \\
+TreeSHAP (path) vs. KernelSHAP & 12/15 & 0.892 \\
+TreeSHAP (interv.) vs. KernelSHAP & 14/15 & 0.956 \\
 }
 %%END_GENERATED
 
@@ -507,7 +538,7 @@ The primary confounder set includes three utilization counts (inpatient, outpati
 
 \subsection{Component~3: Subgroup Performance \& Fairness Audit}
 
-On the held-out test set, we compute model performance (AUC-ROC, PR-AUC, sensitivity at 0.5 threshold, mean predicted risk) stratified by demographic group (age bracket, race, gender). Because the 0.5 cutoff creates too few alerts for a stable selection-rate comparison, disparate-impact ratios use one common operating point: the top 20\% of held-out predicted risks (risk threshold 0.146). We compute $DI_g = P(\hat{Y}_{top20}\!=\!1 \mid G\!=\!g) / P(\hat{Y}_{top20}\!=\!1 \mid G\!=\!g_{\text{ref}})$, where the reference is the largest subgroup (Caucasian for race, Female for gender, and [70--80) for age). A group is reviewed only when its entire patient-bootstrap 95\% CI lies outside [0.80,1.25]; CIs crossing an edge are inconclusive. This is a \textit{descriptive} selection-rate audit, not a fairness certification.
+On the held-out test set, we compute model performance (AUC-ROC, PR-AUC, sensitivity at 0.5 threshold, mean predicted risk) stratified by demographic group (age bracket, race, gender). Because the 0.5 cutoff creates too few alerts for a stable selection-rate comparison, disparate-impact ratios use one common operating point: the top 20\% of held-out predicted risks (risk threshold \TopThreshold). We compute $DI_g = P(\hat{Y}_{top20}\!=\!1 \mid G\!=\!g) / P(\hat{Y}_{top20}\!=\!1 \mid G\!=\!g_{\text{ref}})$, where the reference is the largest subgroup (Caucasian for race, Female for gender, and [70--80) for age). A group is reviewed only when its entire patient-bootstrap 95\% CI lies outside [0.80,1.25]; CIs crossing an edge are inconclusive. This is a \textit{descriptive} selection-rate audit, not a fairness certification.
 
 \subsection{Component~4: Constrained Recourse Audit}
 
@@ -662,9 +693,9 @@ TreeSHAP was computed for every held-out encounter. Table~\ref{tab:shap_top} sho
 \caption{Explainer Robustness on 2,000 Held-Out Rows}
 \centering
 \footnotesize
-\begin{tabular}{l r r l}
+\begin{tabular}{l r r}
 \toprule
-\textbf{Comparison} & \textbf{Top-15 overlap} & \textbf{Spearman $\rho$} & \textbf{Eligible set changed?} \\
+\textbf{Comparison} & \textbf{Top-15 overlap} & \textbf{Spearman $\rho$} \\
 \midrule
 \GeneratedRobustnessRows
 \bottomrule
@@ -685,7 +716,7 @@ On a fixed 2,000-row held-out subset, global rankings were compared across path-
     xlabel={Mean AUC-ROC Decrease},
     xlabel style={font=\small},
     ytick=data,
-    yticklabels={\GeneratedPermLabels},
+    yticklabels/.expanded=\GeneratedPermLabels,
     yticklabel style={font=\scriptsize},
     xticklabel style={font=\scriptsize},
     xmin=0, xmax=0.08,
@@ -743,7 +774,7 @@ Table~\ref{tab:causal} compares the held-out model direction with the adjusted o
     xlabel={E-Value (CI bound)},
     xlabel style={font=\small},
     ytick=data,
-    yticklabels={\GeneratedEValueLabels},
+    yticklabels/.expanded=\GeneratedEValueLabels,
     yticklabel style={font=\scriptsize},
     xticklabel style={font=\scriptsize},
     xmin=0, xmax=3.2,
@@ -815,36 +846,28 @@ Table~\ref{tab:subgroup} summarizes model performance across demographic subgrou
     enlarge x limits=0.1,
 ]
 \addplot[fill=layer1!50, draw=layer1] coordinates {
-    ([10-20), 0.784)
-    ([20-30), 0.763)
-    ([30-40), 0.717)
-    ([40-50), 0.634)
-    ([50-60), 0.674)
-    ([60-70), 0.670)
-    ([70-80), 0.655)
-    ([80-90), 0.629)
-    ([90-100), 0.590)
+    \GeneratedAgeAUCCoords
 };
 \end{axis}
 \end{tikzpicture}
-\caption{AUC-ROC by age group on the held-out test set. Model discrimination varies by age; [90--100) has AUC 0.590.}
+\caption{AUC-ROC by age group on the held-out test set. Model discrimination varies by age; \AgeAUCMinGroup\ has the lowest AUC (\AgeAUCMin).}
 \label{fig:subgroup_auc}
 \end{figure}
 
 \textbf{Key observations:}
 \begin{itemize}[leftmargin=*, nosep]
-    \item Model discrimination varies substantially by age: AUC ranges from 0.590 (ages 90--100) to 0.784 (ages 10--20); the latter has only 125 encounters, so this estimate is unstable.
-    \item The ``Other'' racial category has the lowest prevalence (6.9\%) but AUC 0.714; with only $n = 291$ encounters, this estimate carries substantial sampling uncertainty.
-    \item Gender-based performance is relatively balanced (AUC 0.668 vs. 0.660).
+    \item Model discrimination varies substantially by age: AUC ranges from \AgeAUCMin\ (ages \AgeAUCMinGroup) to \AgeAUCMax\ (ages \AgeAUCMaxGroup). The youngest group, \YoungestGroup, has only \YoungestN\ encounters (AUC \YoungestAUC), so its estimate is unstable.
+    \item The ``Other'' racial category has the lowest prevalence (\OtherRacePrev) but AUC \OtherRaceAUC; with only $n = \OtherRaceN$ encounters, this estimate carries substantial sampling uncertainty.
+    \item Gender-based performance is relatively balanced (AUC \MaleAUC\ vs.\ \FemaleAUC).
     \item Mean predicted risk tracks actual prevalence reasonably well across subgroups, suggesting calibration is not grossly miscalibrated for any single group.
     \item Sensitivity at the 0.5 threshold is near zero for most subgroups, confirming that the default threshold is unsuitable for this class-imbalanced problem.
-    \item At the shared top-20\% risk operating point (threshold 0.146), every non-reference DI result that crosses a band edge is inconclusive. No group has a 95\% CI wholly outside [0.80,1.25]; these are not fairness conclusions.
+    \item At the shared top-20\% risk operating point (threshold \TopThreshold) the selection-rate ratios are descriptive, not fairness conclusions. \DIReviewSentence.
 \end{itemize}
 
 Table~\ref{tab:di} presents the full disparate-impact ratios at the top-20\% operating point.
 
 \begin{table}[htbp]
-\caption{Selection-Rate Disparate Impact at the Top-20\% Risk Operating Point (threshold 0.146)}
+\caption{Selection-Rate Disparate Impact at the Top-20\% Risk Operating Point (threshold \TopThreshold)}
 \centering
 \footnotesize
 \renewcommand{\arraystretch}{1.05}
@@ -889,7 +912,7 @@ All five sensitivity categories are unchanged. This is a limited sensitivity res
 
 \subsection{Constrained Recourse Audit}
 
-The recourse component applies the author-defined actionability policy before considering sensitivity metadata. Historical utilization features are blocked; medication variables are conditional on treatment-specific evidence. None of the five audited features was both policy-approved (\texttt{allowed}) and ROBUST. Consequently, all 20 screened high-risk patients received \texttt{no\_validated\_recourse}. This is a \textit{safety output}, not an absent computation.
+The recourse component applies the author-defined actionability policy before considering sensitivity metadata. Historical utilization features are blocked; medication variables are conditional on treatment-specific evidence. None of the five audited features was both policy-approved (\texttt{allowed}) and ROBUST. Consequently, all \ScreenedPatients\ screened high-risk patients received \texttt{no\_validated\_recourse}. This is a \textit{safety output}, not an absent computation.
 
 % ── SECTION: Baseline Comparison ──────────────────────────────────────────
 \subsection{Baseline Comparison: Naive SHAP vs.\ CausalShield AIPW Audit}
@@ -898,7 +921,7 @@ A naive XAI system uses TreeSHAP feature rankings as a proxy for causal importan
 
 Table~\ref{tab:causal} compares the SHAP direction (sign of $\text{corr}(x_j, \phi_j)$ on the held-out set) against the AIPW-adjusted risk difference. Directions agree for all five primary features. However, \textbf{SHAP alone cannot quantify confounding robustness}: four associations are FRAGILE and one is UNCERTAIN, with zero ROBUST. SHAP direction carries no information on confounding robustness.
 
-\textbf{What SHAP misses:} The E-value for metformin is 1.12, meaning an unmeasured confounder with a risk-ratio association of just 1.12 with both metformin and readmission could fully explain the observed association. A naive system that reports metformin as ``lowers readmission risk'' provides actionable-sounding guidance built on a near-zero-robustness estimate.
+\textbf{What SHAP misses:} The E-value for metformin is \MetforminPrescribedEValue, meaning an unmeasured confounder with a risk-ratio association of just \MetforminPrescribedEValue\ with both metformin and readmission could fully explain the observed association. A naive system that reports metformin as ``lowers readmission risk'' provides actionable-sounding guidance built on a near-zero-robustness estimate.
 
 \subsection{Recourse Gate Unit Test}
 
@@ -944,7 +967,7 @@ The AIPW results should be interpreted as an observational sensitivity analysis,
 \begin{itemize}[leftmargin=*, nosep]
     \item \textbf{Measured-confounding assumption:} The confounder set includes baseline utilization counts, demographics, and diagnosis-group indicators. Unmeasured severity (HbA1c values, BMI, comorbidity indices, physician judgment) likely biases estimates. The E-values quantify but cannot eliminate this risk.
     \item \textbf{Timing:} Medication flags lack precise clinical timestamps in this administrative extract. They are treated as pre-outcome exposures, which may not hold for all encounters. Diagnosis-group indicators (ICD codes assigned at discharge) are excluded from the exposure audit but are included as adjustment variables in the AIPW confounder set. Since ICD codes may be finalised after the treatment decision, this adjustment strategy could introduce post-treatment bias; a sensitivity analysis excluding diagnosis-group confounders is warranted in future work.
-    \item \textbf{Positivity:} Several raw propensity distributions have poor support. We restrict each feature's estimand to encounters with $0.10 < \hat e < 0.90$; this substantially reduces the retained sample for \texttt{number\_emergency} (38.8\% retained).
+    \item \textbf{Positivity:} Several raw propensity distributions have poor support. We restrict each feature's estimand to encounters with $0.10 < \hat e < 0.90$; this substantially reduces the retained sample for \texttt{number\_emergency} (\NumberEmergencyRetainedPct\ retained).
     \item \textbf{Binarisation:} Continuous features are dichotomised at the median, which may obscure non-linear dose-response relationships.
     \item \textbf{Multiplicity and sensitivity:} Five exposures are tested. All five BH-adjusted q-values are below 0.05, but statistical significance does not resolve residual confounding; the E-values remain FRAGILE for four features. E-value thresholds (2 and 3) are conventional, not data-driven~\cite{cinelli2020sensitivity}.
 \end{itemize}
@@ -954,7 +977,7 @@ The code documentation correctly labels these estimates as ``exploratory observa
 The decision not to generate counterfactual recommendations is itself a contribution. Many clinical AI systems produce ``what-if'' scenarios without validating whether the suggested changes are (a)~clinically feasible, (b)~causally sound, or (c)~safe. Our deliberate omission demonstrates that responsible AI development sometimes means acknowledging the limits of available data and methodology.
 
 \subsection{Subgroup Performance Disparities}
-The age-stratified AUC estimates range from 0.590 for ages 90--100 to 0.784 for ages 10--20, but the youngest group has only 125 encounters. These descriptive differences should not be interpreted as established clinical subgroup effects.
+The age-stratified AUC estimates range from \AgeAUCMin\ for ages \AgeAUCMinGroup\ to \AgeAUCMax\ for ages \AgeAUCMaxGroup, but the youngest group has only \YoungestN\ encounters. These descriptive differences should not be interpreted as established clinical subgroup effects.
 
 % ══════════════════════════════════════════════════════════════════════════════
 % VII. LIMITATIONS
@@ -969,10 +992,10 @@ The age-stratified AUC estimates range from 0.590 for ages 90--100 to 0.784 for 
     \item \textbf{Binary exposure:} Continuous features are binarised at the median, losing dose-response nuance.
     \item \textbf{Modest discrimination:} Held-out AUC of \HeldAUC limits the clinical utility of the prediction model itself.
     \item \textbf{No actionable recourse generated:} No feature was both actionability-approved and ROBUST. While this is a safety feature, it means the pipeline does not currently produce actionable ``what-if'' scenarios.
-    \item \textbf{Restricted overlap populations:} Common-support trimming changes the target population and can leave small audit samples, as seen for \texttt{number\_emergency} (38.8\% retained).
+    \item \textbf{Restricted overlap populations:} Common-support trimming changes the target population and can leave small audit samples, as seen for \texttt{number\_emergency} (\NumberEmergencyRetainedPct\ retained).
     \item \textbf{Diagnosis-group adjustment:} Diagnosis-group indicators (ICD codes) are coded at discharge and may partially reflect post-treatment information. A sensitivity analysis excluding these confounders (Table~\ref{tab:sens}) shows that all five sensitivity categories and risk-difference estimates are robust to this choice.
     \item \textbf{No external validation:} This is a single-dataset retrospective study. The pipeline should be positioned as an \textit{exploratory methodological audit}, not a clinically deployable system. External validation on datasets such as MIMIC-III/IV is necessary before any clinical use could be considered.
-    \item \textbf{Fairness metrics are descriptive:} Disparate-impact ratios are reported with patient-level bootstrap 95\% confidence intervals (Table~\ref{tab:di}). Small-group CIs cross the 0.80 band edge (e.g., Asian $n=125$: DI 0.48 [0.17, 0.85]), so no review flag is issued; results remain exploratory signals, not fairness conclusions.
+    \item \textbf{Fairness metrics are descriptive:} Disparate-impact ratios are reported with patient-level bootstrap 95\% confidence intervals (Table~\ref{tab:di}). \DIReviewSentence. Results remain exploratory signals, not fairness conclusions.
 \end{enumerate}
 
 % ══════════════════════════════════════════════════════════════════════════════
@@ -981,7 +1004,7 @@ The age-stratified AUC estimates range from 0.590 for ages 90--100 to 0.784 for 
 \section{Future Work}
 
 \begin{enumerate}[leftmargin=*, nosep, label=\textbf{F\arabic*.}]
-    \item \textbf{Clinician actionability catalogue:} Partner with domain experts to define which features are clinically modifiable and under what constraints, enabling the recourse layer to emit validated ``what-if'' scenarios.
+    \item \textbf{Clinician actionability catalogue:} Partner with domain experts to define which features are clinically modifiable and under what constraints, enabling the recourse component to emit validated ``what-if'' scenarios.
     \item \textbf{Interactive dashboard:} Build a Streamlit or similar interface for clinician-facing exploration of predictions, SHAP explanations, causal audit results, and recourse scenarios.
     \item \textbf{Causal discovery:} Apply PC, FCI, or DirectLiNGAM algorithms to learn the causal graph from data, moving beyond assumed confounder sets.
     \item \textbf{Richer data:} Integrate clinical notes (via NLP), lab values, and social determinants for stronger confounding adjustment.
@@ -998,14 +1021,14 @@ The age-stratified AUC estimates range from 0.590 for ages 90--100 to 0.784 for 
 We presented \textbf{CausalShield}, a reproducible pipeline that pairs clinical readmission prediction with SHAP-guided causal sensitivity analysis. Applied to 99,343 diabetic patient encounters from 130 US hospitals, the pipeline demonstrates:
 
 \begin{itemize}[leftmargin=*, nosep]
-    \item An XGBoost classifier (selected by 5-fold patient-grouped cross-validation over five candidates) achieving AUC-ROC of 0.664 (95\% CI: 0.649--0.678) on a properly patient-grouped held-out test set, with TreeSHAP identifying \texttt{number\_inpatient} (mean $|\phi| = 0.320$) as the dominant feature.
-    \item An AIPW audit of five temporally eligible SHAP-ranked features (ICD diagnosis groups excluded as exposures because they are coded at discharge) with common-support trimming, BH-corrected p-values, post-weighting SMD, and E-value sensitivity analysis. SHAP directions agree with AIPW for all five features. Four associations are FRAGILE ($E \leq 2$); only \texttt{number\_inpatient} reaches UNCERTAIN ($E = 2.95$). No feature is ROBUST. A diagnosis-free adjustment sensitivity analysis leaves all categories unchanged.
+    \item An XGBoost classifier (selected by 5-fold patient-grouped cross-validation over five candidates) achieving AUC-ROC of \HeldAUC\ (95\% CI: \HeldAUClo--\HeldAUChi) on a properly patient-grouped held-out test set, with TreeSHAP identifying \texttt{number\_inpatient} (mean $|\phi| = \TopSHAP$) as the dominant feature.
+    \item An AIPW audit of five temporally eligible SHAP-ranked features (ICD diagnosis groups excluded as exposures because they are coded at discharge) with common-support trimming, BH-corrected p-values, post-weighting SMD, and E-value sensitivity analysis. SHAP directions agree with AIPW for all five features. Four associations are FRAGILE ($E \leq 2$); only \texttt{number\_inpatient} reaches UNCERTAIN ($E = \NumberInpatientEValue$). No feature is ROBUST. A diagnosis-free adjustment sensitivity analysis leaves all categories unchanged.
     \item An actionability-first recourse gate that emitted no recommendation under either the author-defined or a counterfactual ``medications allowed'' policy, because no feature was both policy-approved and ROBUST, demonstrating that responsible AI must require both statistical robustness and clinical feasibility.
-    \item A held-out subgroup audit revealing age-dependent variation in discrimination (AUC 0.590--0.784). Selection-rate ratios are reported with bootstrap 95\% CIs at a common top-20\% operating point (threshold 0.146) and are descriptive rather than fairness conclusions.
+    \item A held-out subgroup audit revealing age-dependent variation in discrimination (AUC \AgeAUCMin--\AgeAUCMax). Selection-rate ratios are reported with bootstrap 95\% CIs at a common top-20\% operating point (threshold \TopThreshold) and are descriptive rather than fairness conclusions.
     \item A semi-synthetic diagnostic where a planted zero-effect proxy has SHAP rank \#1 on a na\"ive model but no common support for AIPW estimation, plus a simple-DGP 200-replication implementation check.
 \end{itemize}
 
-By integrating SHAP explanations, doubly robust causal estimation, E-value sensitivity analysis, semi-synthetic validation, and a constrained recourse safety gate into a single reproducible pipeline, CausalShield takes a concrete step toward trustworthy clinical AI. We emphasise that this work is an \textit{exploratory methodological audit} on a single retrospective dataset, not a clinically deployable system; external validation, clinician-defined actionability constraints, and richer data sources are necessary before any deployment could be considered. The key remaining challenge is partnering with clinical domain experts to define actionable feature constraints that would allow the recourse layer to emit validated ``what-if'' scenarios.
+By integrating SHAP explanations, doubly robust causal estimation, E-value sensitivity analysis, semi-synthetic validation, and a constrained recourse safety gate into a single reproducible pipeline, CausalShield takes a concrete step toward trustworthy clinical AI. We emphasise that this work is an \textit{exploratory methodological audit} on a single retrospective dataset, not a clinically deployable system; external validation, clinician-defined actionability constraints, and richer data sources are necessary before any deployment could be considered. The key remaining challenge is partnering with clinical domain experts to define actionable feature constraints that would allow the recourse component to emit validated ``what-if'' scenarios.
 
 \subsection*{Ethical Considerations}
 This study uses the publicly available, de-identified UCI Diabetes 130-US Hospitals dataset~\cite{strack2014impact}. No patient-identifiable information is present and no institutional review board (IRB) approval was required. No clinical recommendations are made; all results are labeled as exploratory observational analyses.

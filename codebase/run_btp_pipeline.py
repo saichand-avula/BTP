@@ -6,14 +6,6 @@ import re
 import sys
 import pandas as pd
 
-import aux_fairness
-import data_preprocessing
-import layer1
-import layer1_shap
-import layer2_causal
-import layer3_counterfactual
-import layer_baseline_comparison
-import layer_semisynthetic
 
 BASE = Path(__file__).parent
 MODELS = BASE / "models"
@@ -51,6 +43,9 @@ def write_paper_numbers():
         if feature in mapping: return mapping[feature]
         if feature.startswith("discharge_disposition_"):
             return "Discharge Disp.~" + feature.rsplit("_", 1)[1]
+        if feature.startswith("diag_"):
+            parts = feature.split("_")          # diag_1_group_Respiratory
+            return f"Diag {parts[1]} {parts[-1].lower()}"
         return feature.replace("_", " ")
     excluded = ("discharge_disposition_", "time_in_hospital", "num_medications",
                 "num_lab_procedures", "num_procedures", "number_diagnoses", "diag_")
@@ -105,6 +100,34 @@ def write_paper_numbers():
         macro(f"Robust{token}Overlap", f"{int(r.top15_overlap_count)}/15")
         macro(f"Robust{token}Spearman", f(r.spearman_mean_abs_shap))
 
+    # ---- Subgroup / DI / misc prose macros (single source of truth) --------
+    def texbin(v): return str(v).replace("-", "--")
+    age = subgroup.loc[subgroup.group.eq("age")].copy()
+    age["auc"] = age.roc_auc.astype(float)
+    age["lo"] = age.value.str.extract(r"\[(\d+)")[0].astype(int)
+    age = age.sort_values("lo")
+    amin, amax, young = age.loc[age.auc.idxmin()], age.loc[age.auc.idxmax()], age.iloc[0]
+    macro("AgeAUCMin", f(amin.auc)); macro("AgeAUCMinGroup", texbin(amin.value))
+    macro("AgeAUCMax", f(amax.auc)); macro("AgeAUCMaxGroup", texbin(amax.value))
+    macro("YoungestGroup", texbin(young.value)); macro("YoungestAUC", f(young.auc))
+    macro("YoungestN", str(int(young.n)))
+    def sub(g, v): return subgroup.loc[subgroup.group.eq(g) & subgroup.value.eq(v)].iloc[0]
+    other, male, female = sub("race", "Other"), sub("gender", "Male"), sub("gender", "Female")
+    macro("OtherRaceAUC", f(other.roc_auc)); macro("OtherRaceN", str(int(other.n)))
+    macro("OtherRacePrev", pct(other.prevalence) + "\\%")
+    macro("MaleAUC", f(male.roc_auc)); macro("FemaleAUC", f(female.roc_auc))
+    macro("TopSHAP", f(shap.iloc[0].mean_abs_shap))
+    macro("ScreenedPatients", str(len(read("recourse_audit.csv"))))
+    for _, r in audit.iterrows():
+        token = "".join(x.title() for x in str(r.feature).split("_"))
+        macro(f"{token}RetainedPct", pct(r.overlap_fraction) + "\\%")
+    rev = di.loc[di.flag.eq("review")]
+    if len(rev):
+        listing = "; ".join(f"{esc(r.value)} (DI {f(r.disparate_impact_ratio,2)}, 95\\% CI [{f(r.di_ci_lower,2)}, {f(r.di_ci_upper,2)}], $n={int(sub(r.group, r.value).n)}$)" for _, r in rev.iterrows())
+        macro("DIReviewSentence", f"Only {listing} {'is' if len(rev)==1 else 'are'} flagged for review (95\\% CI wholly outside [0.80, 1.25]); every other group whose CI crosses a band edge is inconclusive")
+    else:
+        macro("DIReviewSentence", "No group has a 95\\% CI wholly outside [0.80, 1.25]; every group whose CI crosses a band edge is inconclusive")
+    body("GeneratedAgeAUCCoords", [f"({r.value},{f(r.auc)})" for _, r in age.iterrows()])
     body("GeneratedValidationRows", [
         f"{esc(r.model)} & {f(r.cv_auc_mean)} & {f(r.roc_auc)} & {f(r.pr_auc)} & {f(r.brier)} \\\\" for _, r in validation.iterrows()])
     body("GeneratedHeldoutRows", [
@@ -143,7 +166,8 @@ def write_paper_numbers():
     for label, part in simulation.groupby("exposure_type", sort=False):
         counts=part.category.value_counts(); sim_rows.append(f"{esc(label)} & {f(part.true_rd.mean())} & {f(part.bias.mean(),4)} & {f(part.ci_covers_truth.mean())} & {int(counts.get('FRAGILE',0))}/{int(counts.get('UNCERTAIN',0))}/{int(counts.get('ROBUST',0))} \\\\")
     body("GeneratedSimulationRows", sim_rows)
-    body("GeneratedRobustnessRows", [f"{esc(r.reference_method)} vs. {esc(r.comparison_method)} & {int(r.top15_overlap_count)}/15 & {f(r.spearman_mean_abs_shap)} & {'yes' if True else 'no'} \\\\" for _, r in robust.iterrows()])
+    short = {"TreeSHAP_path_dependent": "TreeSHAP (path)", "TreeSHAP_interventional": "TreeSHAP (interv.)", "KernelSHAP": "KernelSHAP"}
+    body("GeneratedRobustnessRows", [f"{short.get(r.reference_method, esc(r.reference_method))} vs. {short.get(r.comparison_method, esc(r.comparison_method))} & {int(r.top15_overlap_count)}/15 & {f(r.spearman_mean_abs_shap)} \\\\" for _, r in robust.iterrows()])
     generated = "\n".join(lines) + "\n"
     source = PAPER.read_text(encoding="utf-8")
     begin, end = "%%BEGIN_GENERATED", "%%END_GENERATED"
@@ -153,27 +177,33 @@ def write_paper_numbers():
     _, after = remainder.split(end, 1)
     PAPER.write_text(before + begin + "\n" + generated + end + after, encoding="utf-8")
     print(f"Embedded generated paper values in {PAPER}")
-    # A result literal outside the generated block is a synchronization error.
-    generated_free = before + after
-    csv_text = "\n".join(path.read_text(encoding="utf-8") for path in MODELS.glob("*.csv"))
-    csv_decimals = set(re.findall(r"(?<![\w.])-?\d+\.\d+(?![\w.])", csv_text))
-    allowed = {"0.10", "0.90", "0.80", "1.25", "0.05", "1.0", "2.0", "0.8", "1.05"}
+    # Strict leak check: ANY numeric literal outside the generated block that is
+    # not an explicit design constant is a synchronisation error (this catches
+    # stale values, not only values that currently equal a CSV entry).
+    outside = before + after
+    layout_words = ("definecolor", "minimum", "width", "height", "xmin", "xmax", "ymin", "ymax",
+                    "arraystretch", "font=", "precision", "node distance", "Stealth", "enlarge",
+                    "pgfplotsset", "inner sep", "rounded", "fill=", "extra x ticks", "\\bibitem", "p{")
+    allowed = {"0.10", "0.90", "0.80", "1.25", "0.05", "1.05", "0.8", "0.7", "0.3", "0.5", "0.4",
+               "1.0", "2.0", "3.0", "3.11", "0.35", "0.85", "20\\%", "80\\%", "95\\%", "11\\%"}
+    pattern = re.compile(r"(?<![\w.\\])[+\-]?\d+\.\d+(?!\s*(?:cm|pt|mm|em))|\b\d+(?:\.\d+)?\\%|\bn\s*=\s*\d+|\bn=\d+")
     hits = []
-    for match in re.finditer(r"(?<![\w.])-?\d+\.\d+(?![\w.])", generated_free):
-        literal = match.group(0)
-        if literal in allowed:
+    for number, line in enumerate(outside.splitlines(), 1):
+        if line.lstrip().startswith("%") or any(w in line for w in layout_words):
             continue
-        # Exact token matching deliberately avoids treating layout dimensions
-        # and rounded explanatory constants as model outputs.
-        if literal in csv_decimals:
-            line = generated_free.count("\n", 0, match.start()) + 1
-            hits.append(f"line {line}: {literal}")
-    print("Paper result-literal leak check: " + ("PASS" if not hits else "FAIL\n  " + "\n  ".join(hits)))
+        for match in pattern.finditer(line):
+            token = match.group(0).lstrip("+-")
+            if token in allowed or token.startswith("-0.90"):
+                continue
+            hits.append(f"line {number}: {match.group(0)}  | {line.strip()[:80]}")
+    print("Paper result-literal leak check: " + ("PASS" if not hits else f"FAIL ({len(hits)})\n  " + "\n  ".join(hits)))
     if hits:
         raise RuntimeError("result literals remain outside the generated block")
 
 
 def run_all():
+    import aux_fairness, data_preprocessing, layer1, layer1_shap, layer2_causal
+    import layer3_counterfactual, layer_baseline_comparison, layer_semisynthetic
     data_preprocessing.run()
     layer1.train()
     layer1_shap.run()
