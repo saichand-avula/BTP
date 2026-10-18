@@ -6,13 +6,14 @@ Design
 We plant a synthetic binary variable Z with KNOWN zero direct causal effect.
 Z is built as a noisy severity proxy:
 
-  Z_i = 1  iff  (0.7 * signal_i + 0.3 * U_i) > 0.5
+  Z_i = 1  iff  (0.4 * signal_i + 0.6 * U_i) > 0.5
   signal_i = (number_inpatient_i > 0)
   U_i ~ Uniform(0,1)
 
-This gives Z:
+This gives Z conditional exposure probabilities 5/6 when signal=1 and 1/6
+when signal=0. It therefore gives Z:
   - Strong positive association with Y through number_inpatient (confounder).
-  - Enough random noise (30%) that propensity scores are not at the boundary,
+  - Enough random noise (60%) that propensity scores are not at the boundary,
     so common-support trimming retains a usable overlap region.
   - Zero direct causal effect on Y by construction.
 
@@ -132,11 +133,11 @@ def _aipw(df_sub, t, y, x, g):
 
 # ── Experiment A ─────────────────────────────────────────────────────────────
 def experiment_a(df: pd.DataFrame, rng: np.random.Generator) -> dict:
-    """Noisy severity proxy with 70% signal + 30% random noise; true ATE = 0."""
+    """Noisy severity proxy with overlap; true ATE = 0."""
     df = df.copy()
     signal = (df["number_inpatient"] > 0).astype(float).values
     noise  = rng.uniform(0, 1, size=len(df))
-    df["Z_noisy_proxy"] = ((0.7*signal + 0.3*noise) > 0.5).astype(int)
+    df["Z_noisy_proxy"] = ((0.4*signal + 0.6*noise) > 0.5).astype(int)
 
     controls = ([c for c in BASELINE if c in df]
                 + [c for c in df if c.startswith(IMMUTABLE)]
@@ -176,7 +177,7 @@ def experiment_a(df: pd.DataFrame, rng: np.random.Generator) -> dict:
                else "estimation completed; descriptive diagnostic only")
 
     row = {"experiment": "A_noisy_severity_proxy",
-           "planted_feature": "Z_noisy_proxy (70% severity signal + 30% noise)",
+           "planted_feature": "Z_noisy_proxy (40% severity signal + 60% noise)",
            "true_causal_effect": 0.0,
            "naive_model_shap_rank": z_rank,
            "naive_model_mean_abs_shap": z_shap,

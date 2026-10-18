@@ -158,7 +158,7 @@ def write_paper_numbers():
     body("GeneratedSensitivityRows", [f"{esc(r.feature)} & ${float(r.aipw_risk_difference):+.3f}$ & {f(r.e_value_ci_bound,2)} & {r.sensitivity_category} & ${float(sens_by.loc[r.feature,'aipw_risk_difference']):+.3f}$ & {f(sens_by.loc[r.feature,'e_value_ci_bound'],2)} & {sens_by.loc[r.feature,'sensitivity_category']} \\\\" for _, r in audit.iterrows()])
     body("GeneratedSubgroupRows", [f"{esc(r.group)} & {esc(r.value)} & {int(r.n):,} & {pct(r.prevalence)}\\% & {f(r.roc_auc)} & {f(r.mean_predicted_risk)} \\\\" for _, r in subgroup.iterrows()])
     di_flag = {"within_0.80_1.25": "within", "review": "review", "inconclusive": "inconclusive", "reference": "reference"}
-    body("GeneratedDIRows", [f"{esc(r.group)} & {esc(r.value)} & {int(subgroup.loc[(subgroup.group.eq(r.group)) & (subgroup.value.eq(r.value)),'n'].iloc[0]):,} & {f(r.disparate_impact_ratio,2)} & " + ("---" if r.di_ci_lower == "" else f"[{f(r.di_ci_lower,2)}, {f(r.di_ci_upper,2)}]") + f" & {di_flag.get(r.flag, esc(r.flag))} \\\\" for _, r in di.iterrows()])
+    body("GeneratedDIRows", [f"{esc(r.group)} & {esc(r.value)} & {int(subgroup.loc[(subgroup.group.eq(r.group)) & (subgroup.value.eq(r.value)),'n'].iloc[0]):,} & {f(r.disparate_impact_ratio,3)} & " + ("---" if r.di_ci_lower == "" else f"[{f(r.di_ci_lower,3)}, {f(r.di_ci_upper,3)}]") + f" & {di_flag.get(r.flag, esc(r.flag))} \\\\" for _, r in di.iterrows()])
     review = di.loc[di.flag.eq("review")]
     review_text = "; ".join(f"{r.value} ({f(r.disparate_impact_ratio,2)}, [{f(r.di_ci_lower,2)}, {f(r.di_ci_upper,2)}])" for _, r in review.iterrows()) or "none"
     macro("DIReviewGroups", review_text)
@@ -184,7 +184,7 @@ def write_paper_numbers():
     layout_words = ("definecolor", "minimum", "width", "height", "xmin", "xmax", "ymin", "ymax",
                     "arraystretch", "font=", "precision", "node distance", "Stealth", "enlarge",
                     "pgfplotsset", "inner sep", "rounded", "fill=", "extra x ticks", "\\bibitem", "p{")
-    allowed = {"0.10", "0.90", "0.80", "1.25", "0.05", "1.05", "0.8", "0.7", "0.3", "0.5", "0.4",
+    allowed = {"0.10", "0.90", "0.80", "1.25", "0.05", "1.05", "0.8", "0.7", "0.6", "0.3", "0.5", "0.4",
                "1.0", "2.0", "3.0", "3.11", "0.35", "0.85", "20\\%", "80\\%", "95\\%", "11\\%"}
     pattern = re.compile(r"(?<![\w.\\])[+\-]?\d+\.\d+(?!\s*(?:cm|pt|mm|em))|\b\d+(?:\.\d+)?\\%|\bn\s*=\s*\d+|\bn=\d+")
     hits = []
