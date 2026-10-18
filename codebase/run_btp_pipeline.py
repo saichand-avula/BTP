@@ -75,6 +75,10 @@ def write_paper_numbers():
         "TopSensitivity": f(held.sensitivity_top20), "TopSpecificity": f(held.specificity_top20),
         "TopPPV": f(held.ppv_top20), "ZRank": str(int(semi.naive_model_shap_rank)),
         "ZMeanAbsSHAP": f(semi.naive_model_mean_abs_shap),
+        "SemiRD": f(semi.rd, 4), "SemiCILo": f(semi.ci_lower, 4),
+        "SemiCIHi": f(semi.ci_upper, 4), "SemiEValue": f(semi.e_value, 2),
+        "SemiRetainedPct": pct(semi.overlap_fraction) + "\\%",
+        "SemiCategory": str(semi.sensitivity_category),
     }.items(): macro(key, value)
 
     # Prose-level values.  Keeping these as macros makes a rerun the single

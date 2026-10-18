@@ -42,6 +42,12 @@
 \newcommand{\TopPPV}{0.213\xspace}
 \newcommand{\ZRank}{1\xspace}
 \newcommand{\ZMeanAbsSHAP}{0.192\xspace}
+\newcommand{\SemiRD}{0.0047\xspace}
+\newcommand{\SemiCILo}{0.0003\xspace}
+\newcommand{\SemiCIHi}{0.0091\xspace}
+\newcommand{\SemiEValue}{1.06\xspace}
+\newcommand{\SemiRetainedPct}{93.1\%\xspace}
+\newcommand{\SemiCategory}{FRAGILE\xspace}
 \newcommand{\TopPermImportance}{0.069\xspace}
 \newcommand{\TopPermFeature}{Num inpatient\xspace}
 \newcommand{\AuditFeatureCount}{5\xspace}
@@ -318,7 +324,7 @@ sainitin.d23@iiits.in
 % ABSTRACT
 % ══════════════════════════════════════════════════════════════════════════════
 \begin{abstract}
-Clinical AI explanations can be mistaken for treatment recommendations. We present \textbf{CausalShield}, a reproducible four-component audit pipeline for 99,343 eligible UCI Diabetes 130-US Hospitals encounters. Component~1 selects the best readmission model from five candidates via 5-fold patient-grouped cross-validation and computes held-out SHAP explanations. Component~2 conducts an exploratory, cross-fitted AIPW audit of \AuditFeatureCount timing-eligible non-demographic features, with common-support trimming and E-values from risk-ratio confidence bounds. Component~3 reports held-out subgroup performance and disparate-impact ratios with patient-bootstrap confidence intervals. Component~4 withholds patient-level recourse when actionability or sensitivity criteria are not met. The selected model (XGBoost) achieved held-out ROC-AUC \HeldAUC (patient-cluster bootstrap 95\% CI \HeldAUClo--\HeldAUChi) and PR-AUC \HeldPRAUC. At the top-20\% operating point (threshold \TopThreshold), sensitivity is \TopSensitivity, specificity \TopSpecificity, and PPV \TopPPV. SHAP direction agreed with the AIPW direction for all \AuditFeatureCount primary features, while \FragileCount associations were FRAGILE and \UncertainCount was UNCERTAIN by E-value sensitivity. Removing discharge-coded diagnosis groups from the adjustment set did not change these categories. No audited feature met both the actionability and robustness requirements for recourse. In a separate semi-synthetic diagnostic, a planted proxy had no common support and estimation was blocked. These results are observational sensitivity analyses, not treatment-effect estimates or clinical recommendations.
+Clinical AI explanations can be mistaken for treatment recommendations. We present \textbf{CausalShield}, a reproducible four-component audit pipeline for 99,343 eligible UCI Diabetes 130-US Hospitals encounters. Component~1 selects the best readmission model from five candidates via 5-fold patient-grouped cross-validation and computes held-out SHAP explanations. Component~2 conducts an exploratory, cross-fitted AIPW audit of \AuditFeatureCount timing-eligible non-demographic features, with common-support trimming and E-values from risk-ratio confidence bounds. Component~3 reports held-out subgroup performance and disparate-impact ratios with patient-bootstrap confidence intervals. Component~4 withholds patient-level recourse when actionability or sensitivity criteria are not met. The selected model (XGBoost) achieved held-out ROC-AUC \HeldAUC (patient-cluster bootstrap 95\% CI \HeldAUClo--\HeldAUChi) and PR-AUC \HeldPRAUC. At the top-20\% operating point (threshold \TopThreshold), sensitivity is \TopSensitivity, specificity \TopSpecificity, and PPV \TopPPV. SHAP direction agreed with the AIPW direction for all \AuditFeatureCount primary features, while \FragileCount associations were FRAGILE and \UncertainCount was UNCERTAIN by E-value sensitivity. Removing discharge-coded diagnosis groups from the adjustment set did not change these categories. No audited feature met both the actionability and robustness requirements for recourse. In a separate semi-synthetic diagnostic, a planted zero-effect proxy retained \SemiRetainedPct\ overlap and produced a small \SemiCategory\ estimate (RD \SemiRD). These results are observational sensitivity analyses, not treatment-effect estimates or clinical recommendations.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -929,7 +935,7 @@ To verify the gate behaviour, we ran two scenarios programmatically. \textbf{Sce
 
 \subsection{Semi-Synthetic Ground-Truth Validation}
 
-To verify that the AIPW audit can detect confounded associations, we run a semi-synthetic experiment using real covariates from the full cohort. We plant a synthetic binary feature $Z$ with \textit{zero direct causal effect} on readmission:
+To probe the AIPW implementation under a known zero direct effect, we run a semi-synthetic experiment using real covariates from the full cohort. We plant a synthetic binary feature $Z$ with \textit{zero direct causal effect} on readmission:
 \begin{equation}
 Z_i = \mathbf{1}[0.4 \cdot \mathbf{1}(\texttt{number\_inpatient}_i > 0) + 0.6 \cdot U_i > 0.5]
 \end{equation}
@@ -937,7 +943,7 @@ where $U_i \sim \text{Uniform}(0,1)$. By construction, $Z$ is strongly correlate
 
 A na\"ive gradient boosting model trained \textit{without} \texttt{number\_inpatient} as a predictor ranks $Z$ \ZRank by mean $|\phi|$ (\ZMeanAbsSHAP). This diagnostic reports only the planted proxy's predictive rank.
 
-After adjustment for \texttt{number\_inpatient}, the planted exposure retains stochastic variation and is evaluated with the same common-support rule ($0.10 < \hat{e} < 0.90$). This is a controlled implementation diagnostic, not a validation of real-data causal claims.
+After adjustment for \texttt{number\_inpatient}, \SemiRetainedPct\ of encounters satisfy the same common-support rule ($0.10 < \hat{e} < 0.90$). The resulting estimate is small (RD \SemiRD; 95\% CI [\SemiCILo, \SemiCIHi]) but its interval narrowly excludes zero. Its E-value is \SemiEValue\ and its category is \SemiCategory, so the audit does not label the planted proxy ROBUST. This is a single controlled draw and an implementation diagnostic, not a validation of real-data causal claims.
 
 As a complementary implementation check, a 200-replication Monte Carlo simulation uses two binary confounders derived from real covariates and correctly specified logistic nuisance models. The true RD is calculated from potential-outcome probabilities in every replication. Table~\ref{tab:simulation} reports the null, moderate-effect (RD \SimModerateRD), and larger-effect (RD \SimLargeRD) scenarios. This simple DGP checks the estimator implementation; it does not validate the observational analysis.
 
@@ -1025,7 +1031,7 @@ We presented \textbf{CausalShield}, a reproducible pipeline that pairs clinical 
     \item An AIPW audit of five temporally eligible SHAP-ranked features (ICD diagnosis groups excluded as exposures because they are coded at discharge) with common-support trimming, BH-corrected p-values, post-weighting SMD, and E-value sensitivity analysis. SHAP directions agree with AIPW for all five features. Four associations are FRAGILE ($E \leq 2$); only \texttt{number\_inpatient} reaches UNCERTAIN ($E = \NumberInpatientEValue$). No feature is ROBUST. A diagnosis-free adjustment sensitivity analysis leaves all categories unchanged.
     \item An actionability-first recourse gate that emitted no recommendation under either the author-defined or a counterfactual ``medications allowed'' policy, because no feature was both policy-approved and ROBUST, demonstrating that responsible AI must require both statistical robustness and clinical feasibility.
     \item A held-out subgroup audit revealing age-dependent variation in discrimination (AUC \AgeAUCMin--\AgeAUCMax). Selection-rate ratios are reported with bootstrap 95\% CIs at a common top-20\% operating point (threshold \TopThreshold) and are descriptive rather than fairness conclusions.
-    \item A semi-synthetic diagnostic where a planted zero-effect proxy has SHAP rank \#1 on a na\"ive model but no common support for AIPW estimation, plus a simple-DGP 200-replication implementation check.
+    \item A semi-synthetic diagnostic where a planted zero-effect proxy has SHAP rank \#1 on a na\"ive model, retains \SemiRetainedPct\ common support, and yields a small \SemiCategory\ AIPW estimate (RD \SemiRD), plus a simple-DGP 200-replication implementation check.
 \end{itemize}
 
 By integrating SHAP explanations, doubly robust causal estimation, E-value sensitivity analysis, semi-synthetic validation, and a constrained recourse safety gate into a single reproducible pipeline, CausalShield takes a concrete step toward trustworthy clinical AI. We emphasise that this work is an \textit{exploratory methodological audit} on a single retrospective dataset, not a clinically deployable system; external validation, clinician-defined actionability constraints, and richer data sources are necessary before any deployment could be considered. The key remaining challenge is partnering with clinical domain experts to define actionable feature constraints that would allow the recourse component to emit validated ``what-if'' scenarios.
